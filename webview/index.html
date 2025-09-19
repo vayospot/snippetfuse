@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SnippetFuse - AI Context Builder</title>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="panel-header">
+        <h1 class="panel-title">SnippetFuse</h1>
+        <div class="header-actions">
+          <button class="help-button" title="Help" aria-label="Help">
+            <span class="codicon codicon-question"></span>
+          </button>
+          <button class="reset-button" title="Reset all" aria-label="Reset all">
+            <span class="codicon codicon-refresh"></span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Prompt Section -->
+        <section class="prompt-section">
+          <div class="prompt-section-title">
+            <span class="codicon codicon-comment-discussion"></span>
+            AI Prompt Template
+          </div>
+          <div class="prompt-dropdown-container">
+            <div id="prompt-select-display" class="prompt-select">
+              <span>Bug Report</span>
+              <span class="codicon codicon-chevron-down"></span>
+            </div>
+            <ul id="prompt-select-options" class="prompt-options hidden">
+              <li data-value="bug-report">Bug Report</li>
+              <li data-value="feature-request">Feature Request</li>
+              <li data-value="code-review">Code Review</li>
+              <li data-value="custom">Custom Prompt</li>
+            </ul>
+          </div>
+          <textarea
+            id="custom-prompt-input"
+            class="hidden"
+            placeholder="Describe what you want the AI to help you with..."
+          ></textarea>
+        </section>
+
+        <!-- Main Issue Snippet -->
+        <section class="section">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="codicon codicon-bug"></span>
+              Main Issue
+              <span class="section-count main-count">0</span>
+            </div>
+          </div>
+          <div class="main-snippet-container">
+            <div class="empty-state">
+              <div class="empty-icon">📍</div>
+              <div class="empty-title">No main snippet yet</div>
+              <div class="empty-description">
+                Right-click on code and select "Add as Main Snippet" to
+                highlight the primary issue
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Context Snippets -->
+        <section class="section">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="codicon codicon-references"></span>
+              Context Snippets
+              <span class="section-count context-count">0</span>
+            </div>
+          </div>
+          <div class="context-snippets-container">
+            <div class="empty-state">
+              <div class="empty-icon">🔗</div>
+              <div class="empty-title">No context snippets</div>
+              <div class="empty-description">
+                Add related code snippets to provide context
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Context Controls -->
+        <section class="section">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="codicon codicon-settings-gear"></span>
+              Additional Context
+            </div>
+          </div>
+          <div class="context-controls">
+            <div class="control-item">
+              <details class="collapsible-section">
+                <summary>Add Terminal Log</summary>
+                <div class="terminal-log-content">
+                  <textarea
+                    id="terminal-log-input"
+                    placeholder="Paste terminal logs here..."
+                    rows="4"
+                  ></textarea>
+                </div>
+              </details>
+            </div>
+            <div class="control-item">
+              <div class="checkbox-control">
+                <input type="checkbox" id="add-project-tree-checkbox" />
+                <label for="add-project-tree-checkbox"
+                  >Add Project Tree</label
+                >
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <div class="token-counter-footer hidden">
+          <span class="codicon codicon-warning info-icon"></span>
+          <span class="token-text"
+            >Context may exceed some model token limits</span
+          >
+        </div>
+        <div class="export-actions">
+          <button id="copy-to-clipboard-button" class="primary-button">
+            <span class="codicon codicon-copy"></span>
+            Copy to Clipboard
+          </button>
+          <div class="dropdown-export">
+            <button
+              id="export-dropdown-button"
+              class="icon-button"
+              title="Export options"
+            >
+              <span class="codicon codicon-chevron-down"></span>
+            </button>
+            <div id="export-dropdown-content" class="dropdown-content hidden">
+              <a href="#" data-format="md"> Export as .md </a>
+              <a href="#" data-format="txt"> Export as .txt </a>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

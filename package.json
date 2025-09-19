@@ -1,0 +1,111 @@
+{
+  "name": "snippetfuse",
+  "displayName": "SnippetFuse",
+  "description": "A context packaging tool that lets devs quickly scoop up snippets from different files, organize them, then spit them out in a neat format ready to paste into ChatGPT/Claude/Gemini/whatever",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "categories": [
+    "Snippets",
+    "Debuggers",
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "snippetfuse.addSnippet",
+        "title": "Add Snippet (SnippetFuse)"
+      },
+      {
+        "command": "snippetfuse.addMainSnippet",
+        "title": "Set Main Issue (SnippetFuse)"
+      },
+      {
+        "command": "snippetfuse.addContextSnippet",
+        "title": "Append to Context Field (SnippetFuse)"
+      },
+      {
+        "command": "snippetfuse.addTitleContextSnippet",
+        "title": "Add File to Context (SnippetFuse)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "snippetfuse.addSnippet",
+        "key": "alt+c",
+        "when": "editorTextFocus && editorHasSelection"
+      },
+      {
+        "command": "snippetfuse.addMainSnippet",
+        "key": "alt+m",
+        "when": "editorTextFocus && editorHasSelection"
+      },
+      {
+        "command": "snippetfuse.addContextSnippet",
+        "key": "alt+s",
+        "when": "editorTextFocus && editorHasSelection"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "snippetfuse.addSnippet",
+          "group": "9_cutcopypaste@5"
+        },
+        {
+          "command": "snippetfuse.addMainSnippet",
+          "group": "9_cutcopypaste@5",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "snippetfuse.addContextSnippet",
+          "group": "9_cutcopypaste@5",
+          "when": "editorHasSelection"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "snippetfuse.addTitleContextSnippet",
+          "group": "1_run@1"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "snippetfuse",
+          "title": "SnippetFuse",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "snippetfuse": [
+        {
+          "id": "snippetfuse.mainView",
+          "name": "AI Context Builder",
+          "type": "webview"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.104.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.34.0"
+  },
+  "dependencies": {
+    "@vscode/codicons": "^0.0.40"
+  }
+}
