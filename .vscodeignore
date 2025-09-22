@@ -8,3 +8,7 @@ vsc-extension-quickstart.md
 **/*.map
 **/eslint.config.mjs
 **/.vscode-test.*
+
+# Exclude Demo Files
+assets/snippetfuse-demo.gif
+assets/snippetfuse-demo.mp4

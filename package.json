@@ -1,8 +1,13 @@
 {
   "name": "snippetfuse",
   "displayName": "SnippetFuse",
+  "version": "0.1.0",
+  "publisher": "vayospot",
   "description": "A context packaging tool that lets devs quickly scoop up snippets from different files, organize them, then spit them out in a neat format ready to paste into ChatGPT/Claude/Gemini/whatever",
-  "version": "0.0.1",
+  "author": {
+    "name": "vayo"
+  },
+  "icon": "assets/icon.png",
   "engines": {
     "vscode": "^1.104.0"
   },
@@ -87,7 +92,8 @@
         {
           "id": "snippetfuse.mainView",
           "name": "AI Context Builder",
-          "type": "webview"
+          "type": "webview",
+          "icon": "assets/icon.svg"
         }
       ]
     }
@@ -107,5 +113,13 @@
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.40"
+  },
+  "bugs": {
+    "url": "https://github.com/vayospot/snippetfuse/issues",
+    "email": "vayospot@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vayospot/snippetfuse.git"
   }
 }

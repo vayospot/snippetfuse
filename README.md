@@ -4,7 +4,9 @@ SnippetFuse is a context packaging tool that helps package code snippets, termin
 
 ## Demo
 
-https://github.com/user-attachments/assets/b086f489-7ba3-4b49-9278-1d48ed8b2fc4
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vayospot/snippetfuse/main/assets/snippetfuse-demo.gif" alt="SnippetFuse Demo" />
+</p>
 
 ## Features
 
