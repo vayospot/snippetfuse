@@ -1,171 +1,430 @@
 const vscode = acquireVsCodeApi();
 
-function updateCounters() {
-  const mainCount = document.querySelectorAll(
+const TRUNCATION_HEIGHT = 200;
+const DEBOUNCE_SAVE_DELAY = 500;
+const DEBOUNCE_TOKEN_DELAY = 300;
+
+const MODEL_LIMITS = {
+  ChatGPT: 128000,
+  Claude: 100000,
+  Grok: 98000,
+  Gemini: 52760,
+};
+
+function debounce(func, delay) {
+  let timeoutId;
+  return function (...args) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func.apply(this, args), delay);
+  };
+}
+
+const debouncedSaveState = debounce(saveState, DEBOUNCE_SAVE_DELAY);
+const debouncedUpdateTokenCounter = debounce(
+  updateTokenCounter,
+  DEBOUNCE_TOKEN_DELAY
+);
+
+function createMainEmptyState() {
+  const div = document.createElement("div");
+  div.className = "empty-state";
+  div.innerHTML = `
+    <div class="empty-icon">📍</div>
+    <div class="empty-title">No main snippet yet</div>
+    <div class="empty-description">
+      Right-click on code and select "Add as Main Snippet" to highlight the primary issue
+    </div>
+  `;
+  return div;
+}
+
+function createContextEmptyState() {
+  const div = document.createElement("div");
+  div.className = "empty-state";
+  div.innerHTML = `
+    <div class="empty-icon">🔗</div>
+    <div class="empty-title">No context snippets</div>
+    <div class="empty-description">
+      Add related code snippets to provide context for your main issue
+    </div>
+  `;
+  return div;
+}
+
+function getContainer(destination) {
+  if (destination === "main") {
+    return {
+      container: document.querySelector(".main-snippet-container"),
+      isMain: true,
+    };
+  } else {
+    return {
+      container: document.querySelector(".context-snippets-container"),
+      isMain: false,
+    };
+  }
+}
+
+// State Management
+function saveState() {
+  const state = {
+    mainSnippet: null,
+    contextSnippets: [],
+    selectedPromptValue,
+    customPromptValue: customPromptInput.value,
+    terminalLogValue: terminalLogInput.value,
+    terminalLogOpen: terminalLogDetails.hasAttribute("open"),
+    includeProjectTree: addProjectTreeCheckbox.checked,
+  };
+
+  // Save main snippet
+  const mainCard = document.querySelector(
     ".main-snippet-container .snippet-card"
-  ).length;
-  const contextCount = document.querySelectorAll(
-    ".context-snippets-container .snippet-card"
-  ).length;
+  );
+  if (mainCard) {
+    state.mainSnippet = extractSnippetData(mainCard);
+  }
+
+  // Save context snippets
+  document
+    .querySelectorAll(".context-snippets-container .snippet-card")
+    .forEach((card) => {
+      state.contextSnippets.push(extractSnippetData(card));
+    });
+
+  vscode.setState(state);
+}
+
+function extractSnippetData(card) {
+  const fileInfo =
+    card.dataset.fileInfo || card.querySelector(".file-info")?.title.trim();
+  const code = card.querySelector(".code-preview").textContent;
+  const noteInput = card.querySelector(".note-input");
+  const note = noteInput ? noteInput.value || "" : "";
+  const noteVisible = !card
+    .querySelector(".note-section")
+    .classList.contains("hidden");
+  const isFullFile = card.classList.contains("full-file");
+
+  // Parse file info to extract components
+  let fileName, startLine, endLine;
+  if (isFullFile) {
+    fileName = fileInfo;
+    startLine = 1;
+    endLine = 1;
+  } else {
+    const match = fileInfo.match(/^(.+):(\d+)-(\d+)$/);
+    if (match) {
+      fileName = match[1];
+      startLine = parseInt(match[2]);
+      endLine = parseInt(match[3]);
+    } else {
+      fileName = fileInfo;
+      startLine = 1;
+      endLine = 1;
+    }
+  }
+
+  return {
+    fileName,
+    startLine,
+    endLine,
+    text: code,
+    note,
+    noteVisible,
+    isFullFile,
+  };
+}
+
+function restoreState() {
+  const state = vscode.getState();
+  if (!state) return;
+
+  const contextContainer = document.querySelector(
+    ".context-snippets-container"
+  );
+
+  // Restore main snippet
+  if (state.mainSnippet) {
+    renderSnippetCard(state.mainSnippet, "main");
+    const mainCard = document.querySelector(
+      ".main-snippet-container .snippet-card"
+    );
+    if (mainCard && state.mainSnippet.note) {
+      const noteInput = mainCard.querySelector(".note-input");
+      const noteSection = mainCard.querySelector(".note-section");
+      noteInput.value = state.mainSnippet.note;
+      if (state.mainSnippet.noteVisible) {
+        noteSection.classList.remove("hidden");
+      }
+    }
+  }
+
+  // Clear context container before restoring
+  contextContainer.innerHTML = "";
+
+  // Restore context snippets
+  state.contextSnippets.forEach((snippet) => {
+    renderSnippetCard(snippet, "context");
+    const cards = document.querySelectorAll(
+      ".context-snippets-container .snippet-card"
+    );
+    const lastCard = cards[cards.length - 1];
+    if (lastCard && snippet.note) {
+      const noteInput = lastCard.querySelector(".note-input");
+      const noteSection = lastCard.querySelector(".note-section");
+      noteInput.value = snippet.note;
+      if (snippet.noteVisible) {
+        noteSection.classList.remove("hidden");
+      }
+    }
+  });
+
+  // Restore prompt selection
+  selectedPromptValue = state.selectedPromptValue || "bug-report";
+  const promptOptions = document.querySelectorAll("#prompt-select-options li");
+  promptOptions.forEach((option) => {
+    if (option.dataset.value === selectedPromptValue) {
+      promptSelectDisplay.querySelector("span").textContent =
+        option.textContent;
+    }
+  });
+
+  // Restore custom prompt
+  customPromptInput.value = state.customPromptValue || "";
+  if (selectedPromptValue === "custom") {
+    customPromptInput.classList.remove("hidden");
+  }
+
+  // Restore terminal log
+  terminalLogInput.value = state.terminalLogValue || "";
+  if (state.terminalLogOpen) {
+    terminalLogDetails.setAttribute("open", "");
+  } else {
+    terminalLogDetails.removeAttribute("open");
+  }
+
+  // Restore project tree checkbox
+  addProjectTreeCheckbox.checked = state.includeProjectTree || false;
+
+  updateCounters();
+  updateTokenCounter();
+}
+
+// UI Update Functions
+function updateCounters() {
+  const mainContainer = document.querySelector(".main-snippet-container");
+  const contextContainer = document.querySelector(
+    ".context-snippets-container"
+  );
+
+  const mainCount = mainContainer.querySelectorAll(".snippet-card").length;
+  const contextCount =
+    contextContainer.querySelectorAll(".snippet-card").length;
 
   document.querySelector(".main-count").textContent = mainCount;
   document.querySelector(".context-count").textContent = contextCount;
 
-  // Show/hide empty states
-  const mainEmpty = document.querySelector(
-    ".main-snippet-container .empty-state"
-  );
-  const contextEmpty = document.querySelector(
-    ".context-snippets-container .empty-state"
-  );
+  // Handle main empty state
+  let mainEmpty = mainContainer.querySelector(".empty-state");
+  if (mainCount === 0) {
+    if (!mainEmpty) {
+      mainEmpty = createMainEmptyState();
+      mainContainer.appendChild(mainEmpty);
+    }
+    mainEmpty.style.display = "block";
+  } else if (mainEmpty) {
+    mainEmpty.style.display = "none";
+  }
 
-  if (mainEmpty) mainEmpty.style.display = mainCount > 0 ? "none" : "block";
-  if (contextEmpty)
-    contextEmpty.style.display = contextCount > 0 ? "none" : "block";
+  // Handle context empty state
+  let contextEmpty = contextContainer.querySelector(".empty-state");
+  if (contextCount === 0) {
+    if (!contextEmpty) {
+      contextEmpty = createContextEmptyState();
+      contextContainer.appendChild(contextEmpty);
+    }
+    contextEmpty.style.display = "block";
+  } else if (contextEmpty) {
+    contextEmpty.style.display = "none";
+  }
 }
 
 function renderSnippetCard(snippet, destination) {
-  let container;
-  let isMain = destination === "main";
-
+  const { container, isMain } = getContainer(destination);
   if (isMain) {
-    container = document.querySelector(".main-snippet-container");
     container.innerHTML = "";
-  } else {
-    container = document.querySelector(".context-snippets-container");
   }
 
-  const snippetCard = document.createElement("div");
-  snippetCard.className = `snippet-card ${isMain ? "main-snippet" : ""}`;
+  const card = createSnippetCardElement(snippet, isMain);
+  setupTruncation(card, snippet.isFullFile || false);
+  attachEventListeners(card, snippet, isMain, container);
 
-  const fileName = snippet.fileName.split("/").pop();
+  container.appendChild(card);
+}
 
-  snippetCard.innerHTML = `
-  <div class="card-header">
-    <div
-      class="file-info"
-      title="${snippet.fileName}:${snippet.startLine}-${snippet.endLine}"
-    >
-      ${snippet.fileName}:${snippet.startLine}-${snippet.endLine}
+function createSnippetCardElement(snippet, isMain) {
+  const isFullFile = snippet.isFullFile || false;
+  const baseFileName = snippet.fileName.split(/[/\\]/).pop();
+  const displayFileName = isFullFile
+    ? baseFileName
+    : `${baseFileName}:${snippet.startLine}-${snippet.endLine}`;
+  const tooltipTitle = isFullFile
+    ? snippet.fileName
+    : `${snippet.fileName}:${snippet.startLine}-${snippet.endLine}`;
+  const fileIcon = isFullFile ? "codicon-file-code" : "codicon-code";
+
+  const card = document.createElement("div");
+  card.className = `snippet-card ${isMain ? "main-snippet" : ""} ${
+    isFullFile ? "full-file" : ""
+  }`;
+  card.dataset.fileInfo = tooltipTitle;
+
+  card.innerHTML = `
+    <div class="card-header">
+      <div class="file-info" title="${tooltipTitle}">
+        <span class="codicon ${fileIcon}"></span>
+        ${displayFileName}
+      </div>
+      <div class="card-actions">
+        ${
+          !isMain
+            ? '<button class="action-button move-up" title="Move up"><span class="codicon codicon-arrow-up"></span></button>'
+            : ""
+        }
+        ${
+          !isMain
+            ? '<button class="action-button move-down" title="Move down"><span class="codicon codicon-arrow-down"></span></button>'
+            : ""
+        }
+        <button class="action-button add-note" title="Add note">
+          <span class="codicon codicon-note"></span>
+        </button>
+        <button class="action-button danger remove-snippet" title="Remove">
+          <span class="codicon codicon-trash"></span>
+        </button>
+      </div>
     </div>
-
-    <div class="card-actions">
-      ${
-        !isMain
-          ? '<button class="action-button move-up" title="Move up"><span class="codicon codicon-arrow-up"></span></button>'
-          : ""
-      }
-      ${
-        !isMain
-          ? '<button class="action-button move-down" title="Move down"><span class="codicon codicon-arrow-down"></span></button>'
-          : ""
-      }
-      <button class="action-button add-note" title="Add note">
-        <span class="codicon codicon-note"></span>
-      </button>
-      <button class="action-button danger remove-snippet" title="Remove">
-        <span class="codicon codicon-trash"></span>
-      </button>
+    <div class="code-preview-container truncated"><pre class="code-preview"></pre></div>
+    <div class="expand-actions">
+      <button class="show-more-button">Show full</button>
     </div>
-  </div>
-  <div class="code-preview-container truncated"><pre class="code-preview"></pre></div>
-  <div class="expand-actions">
-    <button class="show-more-button">Show full</button>
-  </div>
-  <div class="note-section hidden">
-    <textarea
-      class="note-input"
-      placeholder="Add note for this snipet..."
-    ></textarea>
-  </div>
-`;
+    <div class="note-section hidden">
+      <textarea
+        class="note-input"
+        placeholder="Add note for this snippet..."
+      ></textarea>
+    </div>
+  `;
 
-  const codeContainer = snippetCard.querySelector(".code-preview-container");
-  const codePreview = snippetCard.querySelector(".code-preview");
+  const codePreview = card.querySelector(".code-preview");
   codePreview.textContent = snippet.text.trim();
 
-  const showMoreButton = snippetCard.querySelector(".show-more-button");
+  return card;
+}
 
-  container.appendChild(snippetCard);
+function setupTruncation(card, isFullFile) {
+  const codeContainer = card.querySelector(".code-preview-container");
+  const codePreview = card.querySelector(".code-preview");
+
+  if (isFullFile) {
+    codeContainer.style.display = "none";
+    return;
+  }
 
   // Check if content is truncated
-  if (codePreview.scrollHeight > 200) {
+  if (codePreview.scrollHeight > TRUNCATION_HEIGHT) {
     codeContainer.classList.add("truncated");
   } else {
     codeContainer.classList.remove("truncated");
   }
+}
+
+function attachEventListeners(card, snippet, isMain, container) {
+  const showMoreButton = card.querySelector(".show-more-button");
+  const fileNameElement = card.querySelector(".file-info");
+  const removeButton = card.querySelector(".remove-snippet");
+  const addNoteButton = card.querySelector(".add-note");
+  const noteSection = card.querySelector(".note-section");
+  const noteInput = noteSection.querySelector(".note-input");
+  const isFullFile = snippet.isFullFile || false;
+
+  // Jump to file listeners
+  const jumpPayload = {
+    fileName: snippet.fileName,
+    startLine: isFullFile ? 1 : snippet.startLine,
+    endLine: isFullFile ? 1 : snippet.endLine,
+  };
 
   showMoreButton.addEventListener("click", () => {
     vscode.postMessage({
       type: "jump-to-file",
-      payload: {
-        fileName: snippet.fileName,
-        startLine: snippet.startLine,
-        endLine: snippet.endLine,
-      },
+      payload: jumpPayload,
     });
   });
 
-  const fileNameElement = snippetCard.querySelector(".file-info");
   fileNameElement.addEventListener("click", () => {
     vscode.postMessage({
       type: "jump-to-file",
-      payload: {
-        fileName: snippet.fileName,
-        startLine: snippet.startLine,
-        endLine: snippet.endLine,
-      },
+      payload: jumpPayload,
     });
   });
 
-  const removeButton = snippetCard.querySelector(".remove-snippet");
+  // Remove snippet
   removeButton.addEventListener("click", () => {
-    if (snippetCard.classList.contains("main-snippet")) {
+    if (card.classList.contains("main-snippet")) {
       vscode.postMessage({
         type: "main-snippet-removed",
       });
     }
-    snippetCard.remove();
+    card.remove();
     updateCounters();
     updateTokenCounter();
+    saveState();
   });
 
-  const addNoteButton = snippetCard.querySelector(".add-note");
-  const noteSection = snippetCard.querySelector(".note-section");
+  // Note management
   addNoteButton.addEventListener("click", () => {
     noteSection.classList.toggle("hidden");
     if (!noteSection.classList.contains("hidden")) {
-      noteSection.querySelector(".note-input").focus();
+      noteInput.focus();
     }
+    saveState();
   });
 
+  noteInput.addEventListener("input", debouncedSaveState);
+
+  // Move actions for context snippets
   if (!isMain) {
-    const moveUpButton = snippetCard.querySelector(".move-up");
-    const moveDownButton = snippetCard.querySelector(".move-down");
+    const moveUpButton = card.querySelector(".move-up");
+    const moveDownButton = card.querySelector(".move-down");
 
     moveUpButton.addEventListener("click", () => {
-      const previousCard = snippetCard.previousElementSibling;
+      const previousCard = card.previousElementSibling;
       if (previousCard && !previousCard.classList.contains("empty-state")) {
-        container.insertBefore(snippetCard, previousCard);
+        container.insertBefore(card, previousCard);
+        saveState();
       }
     });
 
     moveDownButton.addEventListener("click", () => {
-      const nextCard = snippetCard.nextElementSibling;
+      const nextCard = card.nextElementSibling;
       if (nextCard && !nextCard.classList.contains("empty-state")) {
-        container.insertBefore(nextCard, snippetCard);
+        container.insertBefore(nextCard, card);
+        saveState();
       }
     });
   }
-
-  updateCounters();
 }
 
-// Listen for messages from the extension
+// Message Handling
 window.addEventListener("message", (event) => {
   const message = event.data;
   if (message.type === "add-snippet") {
     renderSnippetCard(message.payload, message.payload.destination);
+    updateCounters();
+    updateTokenCounter();
+    saveState();
   }
 });
 
@@ -200,10 +459,19 @@ promptSelectOptions.addEventListener("click", (event) => {
     } else {
       customPromptInput.classList.add("hidden");
     }
+    saveState();
   }
 });
 
+customPromptInput.addEventListener("input", debouncedSaveState);
+
 const terminalLogDetails = document.querySelector(".collapsible-section");
+const terminalLogInput = document.getElementById("terminal-log-input");
+
+terminalLogInput.addEventListener("input", debouncedSaveState);
+terminalLogDetails.addEventListener("toggle", () => {
+  saveState();
+});
 
 // === Finalizing & Exporting Logic ===
 const copyButton = document.getElementById("copy-to-clipboard-button");
@@ -214,7 +482,18 @@ const exportDropdownContent = document.getElementById(
 const addProjectTreeCheckbox = document.getElementById(
   "add-project-tree-checkbox"
 );
-const terminalLogInput = document.getElementById("terminal-log-input");
+
+addProjectTreeCheckbox.addEventListener("change", () => {
+  saveState();
+});
+
+const quickAddFilesButton = document.getElementById("quick-add-files-button");
+quickAddFilesButton.addEventListener("click", () => {
+  vscode.postMessage({
+    type: "add-files",
+    payload: { command: "snippetfuse.addFilesSnippet" },
+  });
+});
 
 exportDropdownButton.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -229,7 +508,8 @@ document.addEventListener("click", () => {
 function getFullContext() {
   const snippets = [];
   document.querySelectorAll(".snippet-card").forEach((card) => {
-    const fileInfo = card.querySelector(".file-info")?.textContent.trim();
+    const fileInfo =
+      card.dataset.fileInfo || card.querySelector(".file-info")?.title.trim();
     const code = card.querySelector(".code-preview").textContent;
     const noteInput = card.querySelector(".note-input");
     const note = noteInput ? noteInput.value || "" : "";
@@ -277,7 +557,7 @@ exportDropdownContent.addEventListener("click", (event) => {
       type: "export-content",
       payload: {
         ...context,
-        format: format,
+        format,
       },
     });
     exportDropdownContent.classList.add("hidden");
@@ -293,24 +573,8 @@ const contextSnippetContainer = document.querySelector(
 
 resetButton.addEventListener("click", () => {
   // Clear all snippets
-  mainSnippetContainer.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📍</div>
-                    <div class="empty-title">No main snippet yet</div>
-                    <div class="empty-description">
-                        Right-click on code and select "Add as Main Snippet" to highlight the primary issue
-                    </div>
-                </div>
-            `;
-  contextSnippetContainer.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">🔗</div>
-                    <div class="empty-title">No context snippets</div>
-                    <div class="empty-description">
-                        Add related code snippets to provide context for your main issue
-                    </div>
-                </div>
-            `;
+  mainSnippetContainer.innerHTML = "";
+  contextSnippetContainer.innerHTML = "";
 
   // Reset prompt to default and hide custom input
   selectedPromptValue = "bug-report";
@@ -327,19 +591,12 @@ resetButton.addEventListener("click", () => {
 
   updateCounters();
   updateTokenCounter();
+  saveState();
 });
 
 // === Token Counter Logic ===
 const tokenCounterFooter = document.querySelector(".token-counter-footer");
 const tokenInfoIcon = tokenCounterFooter.querySelector(".info-icon");
-const tokenText = tokenCounterFooter.querySelector(".token-text");
-
-const MODEL_LIMITS = {
-  ChatGPT: 128000,
-  Claude: 100000,
-  Grok: 98000,
-  Gemini: 52760,
-};
 
 function countTokens(text) {
   const words = text.trim().split(/\s+/).length;
@@ -394,11 +651,11 @@ function subscribeToContentChanges() {
   containers.forEach((element) => {
     if (element) {
       if (element.tagName === "INPUT" || element.tagName === "TEXTAREA") {
-        element.addEventListener("input", updateTokenCounter);
+        element.addEventListener("input", debouncedUpdateTokenCounter);
         element.addEventListener("change", updateTokenCounter);
       } else {
         // MutationObserver for dynamically added/removed snippet cards
-        const observer = new MutationObserver(updateTokenCounter);
+        const observer = new MutationObserver(debouncedUpdateTokenCounter);
         observer.observe(element, {
           childList: true,
           subtree: true,
@@ -413,6 +670,7 @@ function subscribeToContentChanges() {
 }
 
 // Initialize
+restoreState();
 updateCounters();
 updateTokenCounter();
 subscribeToContentChanges();

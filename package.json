@@ -1,7 +1,7 @@
 {
   "name": "snippetfuse",
   "displayName": "SnippetFuse",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "vayospot",
   "description": "A context packaging tool that lets devs quickly scoop up snippets from different files, organize them, then spit them out in a neat format ready to paste into ChatGPT/Claude/Gemini/whatever",
   "author": {
@@ -35,6 +35,10 @@
       {
         "command": "snippetfuse.addTitleContextSnippet",
         "title": "Add File to Context (SnippetFuse)"
+      },
+      {
+        "command": "snippetfuse.addFilesSnippet",
+        "title": "Quick Add Files (SnippetFuse)"
       }
     ],
     "keybindings": [
@@ -112,7 +116,8 @@
     "eslint": "^9.34.0"
   },
   "dependencies": {
-    "@vscode/codicons": "^0.0.40"
+    "@vscode/codicons": "^0.0.40",
+    "ignore": "^7.0.5"
   },
   "bugs": {
     "url": "https://github.com/vayospot/snippetfuse/issues",

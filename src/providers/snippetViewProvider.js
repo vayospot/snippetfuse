@@ -34,6 +34,11 @@ function createSnippetViewProvider(context) {
             vscode.window.showInformationMessage(message.payload.text);
             break;
 
+          case "add-files": {
+            vscode.commands.executeCommand(message.payload.command);
+            break;
+          }
+
           case "jump-to-file": {
             const { fileName, startLine, endLine } = message.payload;
             const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -106,13 +111,13 @@ function createSnippetViewProvider(context) {
             if (format === "copy") {
               await vscode.env.clipboard.writeText(outputContent);
               vscode.window.showInformationMessage(
-                "✅ AI Context copied to clipboard."
+                "AI Context copied to clipboard."
               );
             } else if (format === "md" || format === "txt") {
               const defaultUri = vscode.Uri.file(
                 path.join(
                   vscode.workspace.workspaceFolders[0].uri.fsPath,
-                  `ai-context.${format}`
+                  `snippetfuse-context.${format}`
                 )
               );
               const fileUri = await vscode.window.showSaveDialog({
@@ -124,7 +129,7 @@ function createSnippetViewProvider(context) {
                   Buffer.from(outputContent)
                 );
                 vscode.window.showInformationMessage(
-                  `✅ AI Context exported to ${path.basename(fileUri.fsPath)}.`
+                  `AI Context exported to ${path.basename(fileUri.fsPath)}.`
                 );
               }
             }

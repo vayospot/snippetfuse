@@ -61,8 +61,8 @@
               <div class="empty-icon">📍</div>
               <div class="empty-title">No main snippet yet</div>
               <div class="empty-description">
-                Right-click on code and select "Add as Main Snippet" to
-                highlight the primary issue
+                Select code, right-click and "Set Main Snippet" to highlight the
+                primary issue.
               </div>
             </div>
           </div>
@@ -82,7 +82,8 @@
               <div class="empty-icon">🔗</div>
               <div class="empty-title">No context snippets</div>
               <div class="empty-description">
-                Add related code snippets to provide context
+                Add snippets to provide context by right-clicking and selecting
+                "Append to Context Field"
               </div>
             </div>
           </div>
@@ -110,11 +111,14 @@
               </details>
             </div>
             <div class="control-item">
+              <button id="quick-add-files-button" class="control-button">
+                Add Files from Project
+              </button>
+            </div>
+            <div class="control-item">
               <div class="checkbox-control">
                 <input type="checkbox" id="add-project-tree-checkbox" />
-                <label for="add-project-tree-checkbox"
-                  >Add Project Tree</label
-                >
+                <label for="add-project-tree-checkbox">Add Project Tree</label>
               </div>
             </div>
           </div>
@@ -143,8 +147,8 @@
               <span class="codicon codicon-chevron-down"></span>
             </button>
             <div id="export-dropdown-content" class="dropdown-content hidden">
-              <a href="#" data-format="md"> Export as .md </a>
-              <a href="#" data-format="txt"> Export as .txt </a>
+              <a href="#" data-format="md">Export as .md</a>
+              <a href="#" data-format="txt">Export as .txt</a>
             </div>
           </div>
         </div>

@@ -5,6 +5,7 @@ const {
 const { addSnippetToWebview, hasMain } = require("./commands/addSnippet");
 const { addMainSnippet } = require("./commands/addMainSnippet");
 const { addContextSnippet } = require("./commands/addContextSnippet");
+const { addFilesSnippet } = require("./commands/addFilesSnippet");
 
 function activate(context) {
   console.log('The extension "snippetfuse" is now active!');
@@ -35,6 +36,10 @@ function activate(context) {
         const destination = hasMain() ? "context" : "main";
         addSnippetToWebview(destination, "editor-title-context");
       }
+    ),
+    vscode.commands.registerCommand(
+      "snippetfuse.addFilesSnippet",
+      addFilesSnippet
     )
   );
 }

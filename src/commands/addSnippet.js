@@ -47,14 +47,27 @@ function addSnippetToWebview(destination, source) {
     return;
   }
 
-  const fileName = path.basename(editor.document.fileName);
+  const fullPath = editor.document.fileName;
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(
+    editor.document.uri
+  );
+  const relativePath = workspaceFolder
+    ? path.relative(workspaceFolder.uri.fsPath, fullPath)
+    : fullPath;
+
   const startLine = rangeToUse.start.line + 1;
   const endLine = rangeToUse.end.line + 1;
 
   if (text && webviewView) {
     const snippet = {
       type: "add-snippet",
-      payload: { fileName, text, startLine, endLine, destination },
+      payload: {
+        fileName: relativePath,
+        text,
+        startLine,
+        endLine,
+        destination,
+      },
     };
 
     if (destination === "main") hasMainSnippet = true;
@@ -66,4 +79,57 @@ function addSnippetToWebview(destination, source) {
   }
 }
 
-module.exports = { addSnippetToWebview, setWebview, hasMain, resetMain };
+async function addFullFileToWebview(relativeFilePaths) {
+  vscode.commands.executeCommand("snippetfuse.mainView.focus");
+
+  if (!webviewView || !relativeFilePaths || relativeFilePaths.length === 0) {
+    return;
+  }
+
+  const rootUri = vscode.workspace.workspaceFolders[0].uri;
+  const destination = "context";
+  let addedCount = 0;
+
+  for (const relativePath of relativeFilePaths) {
+    try {
+      const fileUri = vscode.Uri.joinPath(rootUri, relativePath);
+      const content = await vscode.workspace.fs.readFile(fileUri);
+      const text = Buffer.from(content).toString("utf8");
+
+      if (!text) continue;
+
+      const endLine = text.split(/\r\n|\r|\n/).length;
+
+      const snippet = {
+        type: "add-snippet",
+        payload: {
+          fileName: relativePath,
+          text,
+          startLine: 1,
+          endLine,
+          destination,
+          isFullFile: true,
+        },
+      };
+
+      webviewView.webview.postMessage(snippet);
+      addedCount++;
+    } catch (e) {
+      console.error(`Failed to read file ${relativePath}:`, e);
+    }
+  }
+
+  if (addedCount > 0) {
+    vscode.window.showInformationMessage(
+      `Added ${addedCount} file(s) to Context snippets!`
+    );
+  }
+}
+
+module.exports = {
+  addSnippetToWebview,
+  setWebview,
+  hasMain,
+  resetMain,
+  addFullFileToWebview,
+};

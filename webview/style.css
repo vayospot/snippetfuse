@@ -259,6 +259,9 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .card-actions {
@@ -371,12 +374,24 @@ body {
   color: var(--vscode-input-placeholderForeground);
 }
 
-/* Collapsible Section */
-.collapsible-section {
-  width: 100%;
+.context-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.collapsible-section summary {
+/* Collapsible Section */
+.collapsible-section,
+.control-button {
+  width: 100%;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+
+.collapsible-section summary,
+.control-button {
   padding: 12px;
   cursor: pointer;
   list-style: none;
@@ -389,7 +404,8 @@ body {
   transition: background-color 0.1s ease;
 }
 
-.collapsible-section summary:hover {
+.collapsible-section summary:hover,
+.control-button:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
 
@@ -397,7 +413,8 @@ body {
   display: none;
 }
 
-.collapsible-section summary::before {
+.collapsible-section summary::before,
+.control-button::before {
   content: "＋";
   font-size: 14px;
   font-weight: bold;
@@ -406,6 +423,10 @@ body {
 
 .collapsible-section[open] summary::before {
   content: "−";
+}
+
+.control-item {
+  width: 100%;
 }
 
 #terminal-log-input {
