@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.3.0] - 2025-10-26
+
+### Added
+
+- **Git Integration**: New command `Generate AI Commit Context` available in the Source Control panel. It generates a full context report based on your currently staged Git changes, ready for use with LLMs to draft commit messages.
+
+---
+
 ## [0.2.0] - 2025-10-01
 
 ### Added
