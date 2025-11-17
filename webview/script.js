@@ -75,6 +75,7 @@ function saveState() {
     terminalLogValue: terminalLogInput.value,
     terminalLogOpen: terminalLogDetails.hasAttribute("open"),
     includeProjectTree: addProjectTreeCheckbox.checked,
+    smartSuggestionsOpen: smartSuggestionsDetails.hasAttribute("open"), // NEW: Save suggestions state
   };
 
   // Save main snippet
@@ -105,6 +106,7 @@ function extractSnippetData(card) {
     .querySelector(".note-section")
     .classList.contains("hidden");
   const isFullFile = card.classList.contains("full-file");
+  const addedBy = card.dataset.addedBy || "user"; // Read how the snippet was added
 
   // Parse file info to extract components
   let fileName, startLine, endLine;
@@ -133,8 +135,12 @@ function extractSnippetData(card) {
     note,
     noteVisible,
     isFullFile,
+    addedBy, // Include in the state object
   };
 }
+
+// Global variable to track if suggestions should be recalculated (when open)
+let shouldRecalculateSuggestions = false;
 
 function restoreState() {
   const state = vscode.getState();
@@ -207,9 +213,115 @@ function restoreState() {
   // Restore project tree checkbox
   addProjectTreeCheckbox.checked = state.includeProjectTree || false;
 
+  // NEW: Restore smart suggestions state
+  if (state.smartSuggestionsOpen) {
+    smartSuggestionsDetails.setAttribute("open", "");
+    // Recalculate suggestions immediately after state restore if it was open
+    recalculateSuggestions();
+  } else {
+    smartSuggestionsDetails.removeAttribute("open");
+  }
+
   updateCounters();
   updateTokenCounter();
 }
+
+// === Smart Suggestions Logic ===
+
+const smartSuggestionsDetails = document.getElementById(
+  "smart-suggestions-details"
+);
+const smartSuggestionsLoading = document.getElementById(
+  "smart-suggestions-loading"
+);
+const smartSuggestionsPills = document.getElementById(
+  "smart-suggestions-pills"
+);
+const smartSuggestionsEmpty = document.getElementById(
+  "smart-suggestions-empty"
+);
+
+function getActiveSnippetsForSuggestionAnalysis() {
+  const allSnippets = [];
+  const mainCard = document.querySelector(
+    ".main-snippet-container .snippet-card"
+  );
+  if (mainCard) {
+    allSnippets.push(extractSnippetData(mainCard));
+  }
+
+  document
+    .querySelectorAll(".context-snippets-container .snippet-card")
+    .forEach((card) => {
+      allSnippets.push(extractSnippetData(card));
+    });
+  return allSnippets;
+}
+
+function recalculateSuggestions() {
+  const allSnippets = getActiveSnippetsForSuggestionAnalysis();
+
+  // Find if there are any primary snippets to analyze
+  const hasPrimarySnippets = allSnippets.some((s) => s.addedBy === "user");
+
+  if (!hasPrimarySnippets) {
+    smartSuggestionsLoading.classList.add("hidden");
+    smartSuggestionsPills.innerHTML = "";
+    smartSuggestionsEmpty.classList.remove("hidden");
+    return;
+  }
+
+  // Show loading state and clear previous suggestions
+  smartSuggestionsPills.innerHTML = "";
+  smartSuggestionsEmpty.classList.add("hidden");
+  smartSuggestionsLoading.classList.remove("hidden");
+
+  // Request analysis from the extension
+  vscode.postMessage({
+    type: "get-smart-suggestions",
+    payload: {
+      snippets: allSnippets,
+    },
+  });
+
+  shouldRecalculateSuggestions = false;
+}
+
+// Event listener for the smart suggestions collapsible
+smartSuggestionsDetails.addEventListener("toggle", () => {
+  saveState();
+  if (smartSuggestionsDetails.hasAttribute("open")) {
+    // Only run analysis on open if it hasn't run yet or if the snippet list changed while closed
+    if (
+      shouldRecalculateSuggestions ||
+      (smartSuggestionsPills.children.length === 0 &&
+        !smartSuggestionsEmpty.classList.contains("hidden"))
+    ) {
+      recalculateSuggestions();
+    }
+  }
+});
+
+// Listener for suggestion buttons to add the file
+smartSuggestionsPills.addEventListener("click", (e) => {
+  if (e.target.classList.contains("suggestion-pill")) {
+    const filePath = e.target.dataset.filePath;
+    vscode.postMessage({
+      type: "add-full-files-from-suggestions",
+      payload: {
+        filePaths: [filePath],
+      },
+    });
+
+    // Remove the button after it's clicked
+    e.target.remove();
+    // After adding a suggested file, we don't need to re-run analysis,
+    // as the primary context hasn't changed. We just check if the pills are now empty.
+    if (smartSuggestionsPills.children.length === 0) {
+      smartSuggestionsEmpty.classList.remove("hidden");
+    }
+  }
+});
 
 // UI Update Functions
 function updateCounters() {
@@ -248,6 +360,14 @@ function updateCounters() {
   } else if (contextEmpty) {
     contextEmpty.style.display = "none";
   }
+
+  // If snippets change and suggestions are open, recalculate.
+  if (smartSuggestionsDetails.hasAttribute("open")) {
+    recalculateSuggestions();
+  } else {
+    // If closed, mark for recalculation on next open
+    shouldRecalculateSuggestions = true;
+  }
 }
 
 function renderSnippetCard(snippet, destination) {
@@ -279,43 +399,48 @@ function createSnippetCardElement(snippet, isMain) {
     isFullFile ? "full-file" : ""
   }`;
   card.dataset.fileInfo = tooltipTitle;
+  card.dataset.addedBy = snippet.addedBy || "user"; // Set the data attribute for origin
+
+  // REMOVED: Suggestions are no longer per-card
+  const suggestionsSectionHtml = "";
 
   card.innerHTML = `
-    <div class="card-header">
-      <div class="file-info" title="${tooltipTitle}">
-        <span class="codicon ${fileIcon}"></span>
-        ${displayFileName}
-      </div>
-      <div class="card-actions">
-        ${
+		<div class="card-header">
+			<div class="file-info" title="${tooltipTitle}">
+				<span class="codicon ${fileIcon}"></span>
+				${displayFileName}
+			</div>
+			<div class="card-actions">
+				${
           !isMain
             ? '<button class="action-button move-up" title="Move up"><span class="codicon codicon-arrow-up"></span></button>'
             : ""
         }
-        ${
+				${
           !isMain
             ? '<button class="action-button move-down" title="Move down"><span class="codicon codicon-arrow-down"></span></button>'
             : ""
         }
-        <button class="action-button add-note" title="Add note">
-          <span class="codicon codicon-note"></span>
-        </button>
-        <button class="action-button danger remove-snippet" title="Remove">
-          <span class="codicon codicon-trash"></span>
-        </button>
-      </div>
-    </div>
-    <div class="code-preview-container truncated"><pre class="code-preview"></pre></div>
-    <div class="expand-actions">
-      <button class="show-more-button">Show full</button>
-    </div>
-    <div class="note-section hidden">
-      <textarea
-        class="note-input"
-        placeholder="Add note for this snippet..."
-      ></textarea>
-    </div>
-  `;
+				<button class="action-button add-note" title="Add note">
+					<span class="codicon codicon-note"></span>
+				</button>
+				<button class="action-button danger remove-snippet" title="Remove">
+					<span class="codicon codicon-trash"></span>
+				</button>
+			</div>
+		</div>
+		<div class="code-preview-container truncated"><pre class="code-preview"></pre></div>
+		<div class="expand-actions">
+			<button class="show-more-button">Show full</button>
+		</div>
+		<div class="note-section hidden">
+			<textarea
+				class="note-input"
+				placeholder="Add note for this snippet..."
+			></textarea>
+		</div>
+		${suggestionsSectionHtml}
+	`;
 
   const codePreview = card.querySelector(".code-preview");
   codePreview.textContent = snippet.text.trim();
@@ -348,6 +473,8 @@ function attachEventListeners(card, snippet, isMain, container) {
   const noteSection = card.querySelector(".note-section");
   const noteInput = noteSection.querySelector(".note-input");
   const isFullFile = snippet.isFullFile || false;
+
+  // REMOVED: const suggestionsContainer = card.querySelector(".suggestions-pills");
 
   // Jump to file listeners
   const jumpPayload = {
@@ -415,6 +542,8 @@ function attachEventListeners(card, snippet, isMain, container) {
       }
     });
   }
+
+  // REMOVED: Old per-card suggestion handling
 }
 
 // Message Handling
@@ -425,6 +554,27 @@ window.addEventListener("message", (event) => {
     updateCounters();
     updateTokenCounter();
     saveState();
+  } else if (message.type === "render-smart-suggestions") {
+    // NEW: Handle suggestions from extension
+    smartSuggestionsLoading.classList.add("hidden");
+
+    const suggestions = message.payload.suggestions;
+    smartSuggestionsPills.innerHTML = ""; // Clear existing pills
+
+    if (suggestions.length === 0) {
+      smartSuggestionsEmpty.classList.remove("hidden");
+    } else {
+      smartSuggestionsEmpty.classList.add("hidden");
+      suggestions.forEach((filePath) => {
+        const baseFileName = filePath.split(/[/\\]/).pop();
+        const button = document.createElement("button");
+        button.className = "suggestion-pill";
+        button.title = filePath;
+        button.textContent = `+ ${baseFileName}`;
+        button.dataset.filePath = filePath;
+        smartSuggestionsPills.appendChild(button);
+      });
+    }
   }
 });
 

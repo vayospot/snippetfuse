@@ -39,12 +39,12 @@ async function addFilesSnippet() {
     title: "Select files to add as full context snippets",
     canPickMany: true,
     matchOnDescription: true,
-    placeHolder: "Type to filter files (e.g., 'api' or 'src/utils')",
+    placeHolder: "Type to filter by files or folders (e.g., 'api' or 'src/utils')",
   });
 
   if (selectedItems && selectedItems.length > 0) {
     const selectedPaths = selectedItems.map((item) => item.value);
-    await addFullFileToWebview(selectedPaths);
+    await addFullFileToWebview(selectedPaths, "user");
   }
 }
 

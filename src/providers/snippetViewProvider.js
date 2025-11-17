@@ -39,6 +39,30 @@ function createSnippetViewProvider(context) {
             break;
           }
 
+          case "get-smart-suggestions": {
+            try {
+              const addSnippetCmd = require("../commands/addSnippet");
+              await addSnippetCmd.getSuggestionsFromActiveSnippets(
+                message.payload.snippets || []
+              );
+            } catch (err) {
+              console.error("Failed to calculate smart suggestions:", err);
+              webviewView.webview.postMessage({
+                type: "render-smart-suggestions",
+                payload: { suggestions: [] },
+              });
+            }
+            break;
+          }
+
+          case "add-full-files-from-suggestions": {
+            const { filePaths } = message.payload;
+            await require("../commands/addSnippet").addFullFileToWebview(
+              filePaths
+            );
+            break;
+          }
+
           case "jump-to-file": {
             const { fileName, startLine, endLine } = message.payload;
             const workspaceFolders = vscode.workspace.workspaceFolders;

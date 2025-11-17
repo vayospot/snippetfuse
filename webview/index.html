@@ -90,39 +90,54 @@
         </section>
 
         <!-- Context Controls -->
-        <section class="section">
-          <div class="section-header">
-            <div class="section-title">
-              <span class="codicon codicon-settings-gear"></span>
-              Additional Context
-            </div>
-          </div>
-          <div class="context-controls">
-            <div class="control-item">
-              <details class="collapsible-section">
-                <summary>Add Terminal Log</summary>
-                <div class="terminal-log-content">
-                  <textarea
-                    id="terminal-log-input"
-                    placeholder="Paste terminal logs here..."
-                    rows="4"
-                  ></textarea>
+       <section class="section">
+			<div class="section-header">
+				<div class="section-title">
+					<span class="codicon codicon-settings-gear"></span>
+					Additional Context
+				</div>
+			</div>
+			<div class="context-controls">
+                <div class="control-item">
+                    <details class="collapsible-section" id="smart-suggestions-details">
+                        <summary>Smart Suggestions</summary>
+                        <div class="smart-suggestions-content">
+                            <div id="smart-suggestions-loading" class="hidden">
+                                <span class="codicon codicon-loading codicon-modifier-spin"></span>
+                                Analyzing snippets...
+                            </div>
+                            <div id="smart-suggestions-pills" class="suggestions-pills">
+                                </div>
+                            <div id="smart-suggestions-empty" class="hidden">
+                                No suggested files found.
+                            </div>
+                        </div>
+                    </details>
                 </div>
-              </details>
-            </div>
-            <div class="control-item">
-              <button id="quick-add-files-button" class="control-button">
-                Add Files from Project
-              </button>
-            </div>
-            <div class="control-item">
-              <div class="checkbox-control">
-                <input type="checkbox" id="add-project-tree-checkbox" />
-                <label for="add-project-tree-checkbox">Add Project Tree</label>
-              </div>
-            </div>
-          </div>
-        </section>
+                <div class="control-item">
+					<details class="collapsible-section" id="terminal-log-details"> <summary>Add Terminal Log</summary>
+						<div class="terminal-log-content">
+							<textarea
+								id="terminal-log-input"
+								placeholder="Paste terminal logs here..."
+								rows="4"
+							></textarea>
+						</div>
+					</details>
+				</div>
+				<div class="control-item">
+					<button id="quick-add-files-button" class="control-button">
+						Add Files from Project
+					</button>
+				</div>
+				<div class="control-item">
+					<div class="checkbox-control">
+						<input type="checkbox" id="add-project-tree-checkbox" />
+						<label for="add-project-tree-checkbox">Add Project Tree</label>
+					</div>
+				</div>
+			</div>
+		</section>
       </main>
 
       <!-- Footer -->
