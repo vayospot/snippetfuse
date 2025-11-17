@@ -29,10 +29,10 @@ function createMainEmptyState() {
   const div = document.createElement("div");
   div.className = "empty-state";
   div.innerHTML = `
-    <div class="empty-icon">📍</div>
-    <div class="empty-title">No main snippet yet</div>
-    <div class="empty-description">
-      Right-click on code and select "Add as Main Snippet" to highlight the primary issue
+    <span class="empty-icon">📍</span>
+    <div class="empty-content">
+      <h3>Set the Main Issue</h3>
+      <p>Select code, right-click → Set Main Issue</p>
     </div>
   `;
   return div;
@@ -42,10 +42,10 @@ function createContextEmptyState() {
   const div = document.createElement("div");
   div.className = "empty-state";
   div.innerHTML = `
-    <div class="empty-icon">🔗</div>
-    <div class="empty-title">No context snippets</div>
-    <div class="empty-description">
-      Add related code snippets to provide context for your main issue
+    <span class="empty-icon">🔗</span>
+    <div class="empty-content">
+      <h3>Add Related Context</h3>
+      <p>Select code, right-click → Add Snippet</p>
     </div>
   `;
   return div;
@@ -75,10 +75,9 @@ function saveState() {
     terminalLogValue: terminalLogInput.value,
     terminalLogOpen: terminalLogDetails.hasAttribute("open"),
     includeProjectTree: addProjectTreeCheckbox.checked,
-    smartSuggestionsOpen: smartSuggestionsDetails.hasAttribute("open"), // NEW: Save suggestions state
+    smartSuggestionsOpen: smartSuggestionsDetails.hasAttribute("open"),
   };
 
-  // Save main snippet
   const mainCard = document.querySelector(
     ".main-snippet-container .snippet-card"
   );
@@ -86,7 +85,6 @@ function saveState() {
     state.mainSnippet = extractSnippetData(mainCard);
   }
 
-  // Save context snippets
   document
     .querySelectorAll(".context-snippets-container .snippet-card")
     .forEach((card) => {
@@ -106,9 +104,8 @@ function extractSnippetData(card) {
     .querySelector(".note-section")
     .classList.contains("hidden");
   const isFullFile = card.classList.contains("full-file");
-  const addedBy = card.dataset.addedBy || "user"; // Read how the snippet was added
+  const addedBy = card.dataset.addedBy || "user";
 
-  // Parse file info to extract components
   let fileName, startLine, endLine;
   if (isFullFile) {
     fileName = fileInfo;
@@ -135,11 +132,10 @@ function extractSnippetData(card) {
     note,
     noteVisible,
     isFullFile,
-    addedBy, // Include in the state object
+    addedBy,
   };
 }
 
-// Global variable to track if suggestions should be recalculated (when open)
 let shouldRecalculateSuggestions = false;
 
 function restoreState() {
@@ -150,7 +146,6 @@ function restoreState() {
     ".context-snippets-container"
   );
 
-  // Restore main snippet
   if (state.mainSnippet) {
     renderSnippetCard(state.mainSnippet, "main");
     const mainCard = document.querySelector(
@@ -166,10 +161,8 @@ function restoreState() {
     }
   }
 
-  // Clear context container before restoring
   contextContainer.innerHTML = "";
 
-  // Restore context snippets
   state.contextSnippets.forEach((snippet) => {
     renderSnippetCard(snippet, "context");
     const cards = document.querySelectorAll(
@@ -186,23 +179,20 @@ function restoreState() {
     }
   });
 
-  // Restore prompt selection
   selectedPromptValue = state.selectedPromptValue || "bug-report";
   const promptOptions = document.querySelectorAll("#prompt-select-options li");
   promptOptions.forEach((option) => {
     if (option.dataset.value === selectedPromptValue) {
-      promptSelectDisplay.querySelector("span").textContent =
+      promptSelectDisplay.querySelector(".selected-prompt").textContent =
         option.textContent;
     }
   });
 
-  // Restore custom prompt
   customPromptInput.value = state.customPromptValue || "";
   if (selectedPromptValue === "custom") {
     customPromptInput.classList.remove("hidden");
   }
 
-  // Restore terminal log
   terminalLogInput.value = state.terminalLogValue || "";
   if (state.terminalLogOpen) {
     terminalLogDetails.setAttribute("open", "");
@@ -210,13 +200,10 @@ function restoreState() {
     terminalLogDetails.removeAttribute("open");
   }
 
-  // Restore project tree checkbox
   addProjectTreeCheckbox.checked = state.includeProjectTree || false;
 
-  // NEW: Restore smart suggestions state
   if (state.smartSuggestionsOpen) {
     smartSuggestionsDetails.setAttribute("open", "");
-    // Recalculate suggestions immediately after state restore if it was open
     recalculateSuggestions();
   } else {
     smartSuggestionsDetails.removeAttribute("open");
@@ -226,8 +213,7 @@ function restoreState() {
   updateTokenCounter();
 }
 
-// === Smart Suggestions Logic ===
-
+// Smart Suggestions Logic
 const smartSuggestionsDetails = document.getElementById(
   "smart-suggestions-details"
 );
@@ -260,8 +246,6 @@ function getActiveSnippetsForSuggestionAnalysis() {
 
 function recalculateSuggestions() {
   const allSnippets = getActiveSnippetsForSuggestionAnalysis();
-
-  // Find if there are any primary snippets to analyze
   const hasPrimarySnippets = allSnippets.some((s) => s.addedBy === "user");
 
   if (!hasPrimarySnippets) {
@@ -271,12 +255,10 @@ function recalculateSuggestions() {
     return;
   }
 
-  // Show loading state and clear previous suggestions
   smartSuggestionsPills.innerHTML = "";
   smartSuggestionsEmpty.classList.add("hidden");
   smartSuggestionsLoading.classList.remove("hidden");
 
-  // Request analysis from the extension
   vscode.postMessage({
     type: "get-smart-suggestions",
     payload: {
@@ -287,11 +269,9 @@ function recalculateSuggestions() {
   shouldRecalculateSuggestions = false;
 }
 
-// Event listener for the smart suggestions collapsible
 smartSuggestionsDetails.addEventListener("toggle", () => {
   saveState();
   if (smartSuggestionsDetails.hasAttribute("open")) {
-    // Only run analysis on open if it hasn't run yet or if the snippet list changed while closed
     if (
       shouldRecalculateSuggestions ||
       (smartSuggestionsPills.children.length === 0 &&
@@ -302,7 +282,6 @@ smartSuggestionsDetails.addEventListener("toggle", () => {
   }
 });
 
-// Listener for suggestion buttons to add the file
 smartSuggestionsPills.addEventListener("click", (e) => {
   if (e.target.classList.contains("suggestion-pill")) {
     const filePath = e.target.dataset.filePath;
@@ -313,10 +292,7 @@ smartSuggestionsPills.addEventListener("click", (e) => {
       },
     });
 
-    // Remove the button after it's clicked
     e.target.remove();
-    // After adding a suggested file, we don't need to re-run analysis,
-    // as the primary context hasn't changed. We just check if the pills are now empty.
     if (smartSuggestionsPills.children.length === 0) {
       smartSuggestionsEmpty.classList.remove("hidden");
     }
@@ -337,35 +313,31 @@ function updateCounters() {
   document.querySelector(".main-count").textContent = mainCount;
   document.querySelector(".context-count").textContent = contextCount;
 
-  // Handle main empty state
   let mainEmpty = mainContainer.querySelector(".empty-state");
   if (mainCount === 0) {
     if (!mainEmpty) {
       mainEmpty = createMainEmptyState();
       mainContainer.appendChild(mainEmpty);
     }
-    mainEmpty.style.display = "block";
+    mainEmpty.style.display = "flex";
   } else if (mainEmpty) {
     mainEmpty.style.display = "none";
   }
 
-  // Handle context empty state
   let contextEmpty = contextContainer.querySelector(".empty-state");
   if (contextCount === 0) {
     if (!contextEmpty) {
       contextEmpty = createContextEmptyState();
       contextContainer.appendChild(contextEmpty);
     }
-    contextEmpty.style.display = "block";
+    contextEmpty.style.display = "flex";
   } else if (contextEmpty) {
     contextEmpty.style.display = "none";
   }
 
-  // If snippets change and suggestions are open, recalculate.
   if (smartSuggestionsDetails.hasAttribute("open")) {
     recalculateSuggestions();
   } else {
-    // If closed, mark for recalculation on next open
     shouldRecalculateSuggestions = true;
   }
 }
@@ -399,48 +371,41 @@ function createSnippetCardElement(snippet, isMain) {
     isFullFile ? "full-file" : ""
   }`;
   card.dataset.fileInfo = tooltipTitle;
-  card.dataset.addedBy = snippet.addedBy || "user"; // Set the data attribute for origin
-
-  // REMOVED: Suggestions are no longer per-card
-  const suggestionsSectionHtml = "";
+  card.dataset.addedBy = snippet.addedBy || "user";
 
   card.innerHTML = `
-		<div class="card-header">
-			<div class="file-info" title="${tooltipTitle}">
-				<span class="codicon ${fileIcon}"></span>
-				${displayFileName}
-			</div>
-			<div class="card-actions">
-				${
+    <div class="card-header">
+      <div class="file-info" title="${tooltipTitle}">
+        <span class="codicon ${fileIcon}"></span>
+        ${displayFileName}
+      </div>
+      <div class="card-actions">
+        ${
           !isMain
             ? '<button class="action-button move-up" title="Move up"><span class="codicon codicon-arrow-up"></span></button>'
             : ""
         }
-				${
+        ${
           !isMain
             ? '<button class="action-button move-down" title="Move down"><span class="codicon codicon-arrow-down"></span></button>'
             : ""
         }
-				<button class="action-button add-note" title="Add note">
-					<span class="codicon codicon-note"></span>
-				</button>
-				<button class="action-button danger remove-snippet" title="Remove">
-					<span class="codicon codicon-trash"></span>
-				</button>
-			</div>
-		</div>
-		<div class="code-preview-container truncated"><pre class="code-preview"></pre></div>
-		<div class="expand-actions">
-			<button class="show-more-button">Show full</button>
-		</div>
-		<div class="note-section hidden">
-			<textarea
-				class="note-input"
-				placeholder="Add note for this snippet..."
-			></textarea>
-		</div>
-		${suggestionsSectionHtml}
-	`;
+        <button class="action-button add-note" title="Add note">
+          <span class="codicon codicon-note"></span>
+        </button>
+        <button class="action-button danger remove-snippet" title="Remove">
+          <span class="codicon codicon-trash"></span>
+        </button>
+      </div>
+    </div>
+    <div class="code-preview-container truncated"><pre class="code-preview"></pre></div>
+    <div class="expand-actions">
+      <button class="show-more-button">Show full</button>
+    </div>
+    <div class="note-section hidden">
+      <textarea class="note-input" placeholder="Add note for this snippet..."></textarea>
+    </div>
+  `;
 
   const codePreview = card.querySelector(".code-preview");
   codePreview.textContent = snippet.text.trim();
@@ -457,7 +422,6 @@ function setupTruncation(card, isFullFile) {
     return;
   }
 
-  // Check if content is truncated
   if (codePreview.scrollHeight > TRUNCATION_HEIGHT) {
     codeContainer.classList.add("truncated");
   } else {
@@ -474,9 +438,6 @@ function attachEventListeners(card, snippet, isMain, container) {
   const noteInput = noteSection.querySelector(".note-input");
   const isFullFile = snippet.isFullFile || false;
 
-  // REMOVED: const suggestionsContainer = card.querySelector(".suggestions-pills");
-
-  // Jump to file listeners
   const jumpPayload = {
     fileName: snippet.fileName,
     startLine: isFullFile ? 1 : snippet.startLine,
@@ -497,7 +458,6 @@ function attachEventListeners(card, snippet, isMain, container) {
     });
   });
 
-  // Remove snippet
   removeButton.addEventListener("click", () => {
     if (card.classList.contains("main-snippet")) {
       vscode.postMessage({
@@ -510,7 +470,6 @@ function attachEventListeners(card, snippet, isMain, container) {
     saveState();
   });
 
-  // Note management
   addNoteButton.addEventListener("click", () => {
     noteSection.classList.toggle("hidden");
     if (!noteSection.classList.contains("hidden")) {
@@ -521,7 +480,6 @@ function attachEventListeners(card, snippet, isMain, container) {
 
   noteInput.addEventListener("input", debouncedSaveState);
 
-  // Move actions for context snippets
   if (!isMain) {
     const moveUpButton = card.querySelector(".move-up");
     const moveDownButton = card.querySelector(".move-down");
@@ -542,8 +500,6 @@ function attachEventListeners(card, snippet, isMain, container) {
       }
     });
   }
-
-  // REMOVED: Old per-card suggestion handling
 }
 
 // Message Handling
@@ -555,11 +511,10 @@ window.addEventListener("message", (event) => {
     updateTokenCounter();
     saveState();
   } else if (message.type === "render-smart-suggestions") {
-    // NEW: Handle suggestions from extension
     smartSuggestionsLoading.classList.add("hidden");
 
     const suggestions = message.payload.suggestions;
-    smartSuggestionsPills.innerHTML = ""; // Clear existing pills
+    smartSuggestionsPills.innerHTML = "";
 
     if (suggestions.length === 0) {
       smartSuggestionsEmpty.classList.remove("hidden");
@@ -578,7 +533,7 @@ window.addEventListener("message", (event) => {
   }
 });
 
-// === Prompt Creation Logic ===
+// Prompt Creation Logic
 const promptSelectDisplay = document.getElementById("prompt-select-display");
 const promptSelectOptions = document.getElementById("prompt-select-options");
 const customPromptInput = document.getElementById("custom-prompt-input");
@@ -599,7 +554,7 @@ promptSelectOptions.addEventListener("click", (event) => {
   const selectedLi = event.target;
   if (selectedLi.tagName === "LI") {
     selectedPromptValue = selectedLi.dataset.value;
-    promptSelectDisplay.querySelector("span").textContent =
+    promptSelectDisplay.querySelector(".selected-prompt").textContent =
       selectedLi.textContent;
     promptSelectOptions.classList.add("hidden");
 
@@ -615,7 +570,7 @@ promptSelectOptions.addEventListener("click", (event) => {
 
 customPromptInput.addEventListener("input", debouncedSaveState);
 
-const terminalLogDetails = document.querySelector(".collapsible-section");
+const terminalLogDetails = document.getElementById("terminal-log-details");
 const terminalLogInput = document.getElementById("terminal-log-input");
 
 terminalLogInput.addEventListener("input", debouncedSaveState);
@@ -623,7 +578,7 @@ terminalLogDetails.addEventListener("toggle", () => {
   saveState();
 });
 
-// === Finalizing & Exporting Logic ===
+// Finalizing & Exporting Logic
 const copyButton = document.getElementById("copy-to-clipboard-button");
 const exportDropdownButton = document.getElementById("export-dropdown-button");
 const exportDropdownContent = document.getElementById(
@@ -650,7 +605,6 @@ exportDropdownButton.addEventListener("click", (e) => {
   exportDropdownContent.classList.toggle("hidden");
 });
 
-// Close export dropdown when clicking outside
 document.addEventListener("click", () => {
   exportDropdownContent.classList.add("hidden");
 });
@@ -696,7 +650,6 @@ copyButton.addEventListener("click", () => {
   });
 });
 
-// Handle Export as .md/.txt
 exportDropdownContent.addEventListener("click", (event) => {
   if (event.target.tagName === "A") {
     event.preventDefault();
@@ -714,7 +667,7 @@ exportDropdownContent.addEventListener("click", (event) => {
   }
 });
 
-// == Reset Logic ==
+// Reset Logic
 const resetButton = document.querySelector(".reset-button");
 const mainSnippetContainer = document.querySelector(".main-snippet-container");
 const contextSnippetContainer = document.querySelector(
@@ -722,20 +675,17 @@ const contextSnippetContainer = document.querySelector(
 );
 
 resetButton.addEventListener("click", () => {
-  // Clear all snippets
   mainSnippetContainer.innerHTML = "";
   contextSnippetContainer.innerHTML = "";
 
-  // Reset prompt to default and hide custom input
   selectedPromptValue = "bug-report";
-  promptSelectDisplay.querySelector("span").textContent = "Bug Report";
+  promptSelectDisplay.querySelector(".selected-prompt").textContent =
+    "Bug Report";
   customPromptInput.value = "";
   customPromptInput.classList.add("hidden");
 
-  // Uncheck project tree
   addProjectTreeCheckbox.checked = false;
 
-  // Collapse terminal log and clear input
   terminalLogInput.value = "";
   terminalLogDetails.removeAttribute("open");
 
@@ -744,13 +694,12 @@ resetButton.addEventListener("click", () => {
   saveState();
 });
 
-// === Token Counter Logic ===
-const tokenCounterFooter = document.querySelector(".token-counter-footer");
-const tokenInfoIcon = tokenCounterFooter.querySelector(".info-icon");
+// Token Counter Logic
+const tokenCounterFooter = document.querySelector(".token-warning");
+const tokenInfoIcon = tokenCounterFooter.querySelector(".codicon");
 
 function countTokens(text) {
   const words = text.trim().split(/\s+/).length;
-  // A common heuristic: 100 words ≈ 75 tokens
   return Math.ceil(words * 0.75);
 }
 
@@ -763,8 +712,6 @@ function updateTokenCounter() {
     (fullContext.includeProjectTree ? "project tree placeholder" : "");
 
   const totalTokens = countTokens(allText);
-
-  // Find the lowest model limit
   const lowestLimit = Math.min(...Object.values(MODEL_LIMITS));
 
   if (totalTokens >= lowestLimit) {
@@ -773,7 +720,6 @@ function updateTokenCounter() {
     tokenCounterFooter.classList.add("hidden");
   }
 
-  // Build the detailed hover text
   let hoverText = `Estimated tokens: ${totalTokens.toLocaleString()}\n\nModel Limits:\n`;
   for (const [model, limit] of Object.entries(MODEL_LIMITS)) {
     const exceeds = totalTokens > limit;
@@ -804,7 +750,6 @@ function subscribeToContentChanges() {
         element.addEventListener("input", debouncedUpdateTokenCounter);
         element.addEventListener("change", updateTokenCounter);
       } else {
-        // MutationObserver for dynamically added/removed snippet cards
         const observer = new MutationObserver(debouncedUpdateTokenCounter);
         observer.observe(element, {
           childList: true,
@@ -815,7 +760,6 @@ function subscribeToContentChanges() {
     }
   });
 
-  // Also observe the details element for terminal log
   terminalLogDetails.addEventListener("toggle", updateTokenCounter);
 }
 
