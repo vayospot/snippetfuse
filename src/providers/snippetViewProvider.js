@@ -102,6 +102,7 @@ function createSnippetViewProvider(context) {
               promptText,
               snippets,
               terminalLog,
+              externalInfo,
               includeProjectTree,
               format,
             } = message.payload;
@@ -121,6 +122,12 @@ function createSnippetViewProvider(context) {
             if (terminalLog.include) {
               outputContent += "\n\n### Terminal Log\n\n```\n";
               outputContent += `${terminalLog.text}\n`;
+              outputContent += "```\n---\n";
+            }
+
+            if (externalInfo && externalInfo.include) {
+              outputContent += "\n\n### External Information\n\n```\n";
+              outputContent += `${externalInfo.text}\n`;
               outputContent += "```\n---\n";
             }
 

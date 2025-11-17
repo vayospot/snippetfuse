@@ -74,6 +74,8 @@ function saveState() {
     customPromptValue: customPromptInput.value,
     terminalLogValue: terminalLogInput.value,
     terminalLogOpen: terminalLogDetails.hasAttribute("open"),
+    externalInfoValue: externalInfoInput.value,
+    externalInfoOpen: externalInfoDetails.hasAttribute("open"),
     includeProjectTree: addProjectTreeCheckbox.checked,
     smartSuggestionsOpen: smartSuggestionsDetails.hasAttribute("open"),
   };
@@ -198,6 +200,13 @@ function restoreState() {
     terminalLogDetails.setAttribute("open", "");
   } else {
     terminalLogDetails.removeAttribute("open");
+  }
+
+  externalInfoInput.value = state.externalInfoValue || "";
+  if (state.externalInfoOpen) {
+    externalInfoDetails.setAttribute("open", "");
+  } else {
+    externalInfoDetails.removeAttribute("open");
   }
 
   addProjectTreeCheckbox.checked = state.includeProjectTree || false;
@@ -585,11 +594,13 @@ customPromptInput.addEventListener("input", debouncedSaveState);
 
 const terminalLogDetails = document.getElementById("terminal-log-details");
 const terminalLogInput = document.getElementById("terminal-log-input");
+const externalInfoDetails = document.getElementById("external-info-details");
+const externalInfoInput = document.getElementById("external-info-input");
 
 terminalLogInput.addEventListener("input", debouncedSaveState);
-terminalLogDetails.addEventListener("toggle", () => {
-  saveState();
-});
+terminalLogDetails.addEventListener("toggle", saveState);
+externalInfoInput.addEventListener("input", debouncedSaveState);
+externalInfoDetails.addEventListener("toggle", saveState);
 
 // Finalizing & Exporting Logic
 const copyButton = document.getElementById("copy-to-clipboard-button");
@@ -642,12 +653,19 @@ function getFullContext() {
       terminalLogDetails.hasAttribute("open"),
     text: terminalLogInput.value.trim(),
   };
+  const externalInfo = {
+    include:
+      externalInfoInput.value.trim().length > 0 &&
+      externalInfoDetails.hasAttribute("open"),
+    text: externalInfoInput.value.trim(),
+  };
   const includeProjectTree = addProjectTreeCheckbox.checked;
 
   return {
     promptText,
     snippets,
     terminalLog,
+    externalInfo, // New
     includeProjectTree,
   };
 }
@@ -702,6 +720,9 @@ resetButton.addEventListener("click", () => {
   terminalLogInput.value = "";
   terminalLogDetails.removeAttribute("open");
 
+  externalInfoInput.value = "";
+  externalInfoDetails.removeAttribute("open");
+
   smartSuggestionsDetails.removeAttribute("open");
 
   updateCounters({ sourceOfChange: "user" });
@@ -724,6 +745,7 @@ function updateTokenCounter() {
     fullContext.promptText +
     fullContext.snippets.map((s) => s.fileInfo + s.code + s.note).join(" ") +
     (fullContext.terminalLog.include ? fullContext.terminalLog.text : "") +
+    (fullContext.externalInfo.include ? fullContext.externalInfo.text : "") +
     (fullContext.includeProjectTree ? "project tree placeholder" : "");
 
   const totalTokens = countTokens(allText);
@@ -756,6 +778,7 @@ function subscribeToContentChanges() {
     document.querySelector(".context-snippets-container"),
     document.getElementById("custom-prompt-input"),
     document.getElementById("terminal-log-input"),
+    document.getElementById("external-info-input"),
     document.getElementById("add-project-tree-checkbox"),
   ];
 
@@ -776,6 +799,7 @@ function subscribeToContentChanges() {
   });
 
   terminalLogDetails.addEventListener("toggle", updateTokenCounter);
+  externalInfoDetails.addEventListener("toggle", updateTokenCounter);
 }
 
 // Initialize
