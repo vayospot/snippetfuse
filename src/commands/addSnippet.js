@@ -33,6 +33,11 @@ function extractImportPaths(code) {
     /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
     // Dynamic imports: import("path")
     /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+    // Language-agnostic additions for common includes
+    /^\s*#include\s*["<]([^"<>]+)[">]/gm, // C/C++
+    /^\s*use\s+([\w\\]+);/gm, // PHP/Rust
+    /^\s*from\s+([\w.]+)\s+import/gm, // Python
+    /^\s*import\s+([\w.]+)/gm, // Python/Java/Go
   ];
 
   patterns.forEach((pattern) => {
@@ -53,36 +58,15 @@ function extractImportPaths(code) {
 
 function isProjectSpecificImport(importPath) {
   // Keep relative paths: ./ ../
-  if (importPath.startsWith(".")) return true;
-
-  // Keep absolute paths starting with /
-  if (importPath.startsWith("/")) return true;
-
+  if (importPath.startsWith(".") || importPath.startsWith("/")) return true;
   // Keep common alias patterns: @/ ~/ $/ #/
   if (/^[@~$#]\//.test(importPath)) return true;
-
-  // Discard pure package names (no path separator)
-  if (!importPath.includes("/")) return false;
-
-  // Discard scoped packages: @scope/package
-  if (/^@[\w-]+\/[\w-]+$/.test(importPath)) return false;
-
-  // Discard node built-ins
-  const nodeBuiltins = [
-    "fs",
-    "path",
-    "http",
-    "https",
-    "crypto",
-    "util",
-    "events",
-    "stream",
-  ];
-  if (nodeBuiltins.includes(importPath)) return false;
-
-  // If it has a path separator but isn't scoped, might be project-specific
-  // e.g., "utils/helpers" could be from tsconfig paths
-  return true;
+  // This is a basic check. For Python `from . import X` becomes `.` which we want to ignore.
+  if (importPath === ".") return false;
+  // A path that contains a separator is likely a project file.
+  if (/[/\\]/.test(importPath)) return true;
+  // If none of the above, it's likely a library or built-in, so we discard it.
+  return false;
 }
 
 /**
@@ -170,7 +154,7 @@ async function manualResolveImport(importPath, sourceFilePath, workspaceRoot) {
     }
     // Other patterns - might be tsconfig paths
     else {
-      resolvedPath = importPath;
+      resolvedPath = importPath.replace(/\./g, "/"); // For python/java paths
     }
 
     if (resolvedPath) {
@@ -201,7 +185,24 @@ async function findFileWithExtensions(relativePath, workspaceRoot) {
   }
 
   // If not, proceed assuming the path is extension-less (for suggestions).
-  const extensions = [".js", ".jsx", ".ts", ".tsx", ".json", ".mjs", ".cjs"];
+  const extensions = [
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".json",
+    ".mjs",
+    ".cjs",
+    ".py",
+    ".java",
+    ".go",
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".php",
+    ".rs",
+  ];
 
   // Try exact path with extensions
   for (const ext of extensions) {
@@ -233,47 +234,50 @@ async function findFileWithExtensions(relativePath, workspaceRoot) {
     }
   }
 
+  // For Python __init__.py
+  const pyInitPattern = `${relativePath}/__init__.py`;
+  const pyInitFiles = await vscode.workspace.findFiles(
+    pyInitPattern,
+    "**/node_modules/**",
+    1
+  );
+  if (pyInitFiles.length > 0) {
+    return path
+      .relative(workspaceRoot.fsPath, pyInitFiles[0].fsPath)
+      .replace(/\\/g, "/");
+  }
+
   return null;
 }
 
 /**
  * Main function: analyzes code snippet and returns resolved file paths.
  */
-async function getSuggestionsFromCode(code, currentFilePath, startLine) {
+async function getSuggestionsFromCode(code, currentFilePath) {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
   if (!workspaceRoot) return [];
 
-  // Step 1: Extract import paths and their exact locations
   const importData = extractImportPaths(code);
-
-  // Step 2: Filter to only project-specific imports
   const projectImports = importData.filter((data) =>
     isProjectSpecificImport(data.path)
   );
 
   if (projectImports.length === 0) return [];
 
-  // Step 3: Resolve each import to an actual file
   const resolvedFiles = new Set();
-
   for (const { path: importPath, index } of projectImports) {
-    // Try VS Code's definition provider first (most accurate)
     let resolved = await resolveImportToFile(
       importPath,
-      index, // Pass the precise index
+      index,
       currentFilePath,
       workspaceRoot
     );
 
-    // If resolved via API, it's an absolute path. Convert to relative.
     if (resolved) {
       resolved = path
         .relative(workspaceRoot.fsPath, resolved)
         .replace(/\\/g, "/");
-    }
-
-    // Fallback to manual resolution (already returns relative path)
-    if (!resolved) {
+    } else {
       resolved = await manualResolveImport(
         importPath,
         currentFilePath,
@@ -281,13 +285,9 @@ async function getSuggestionsFromCode(code, currentFilePath, startLine) {
       );
     }
 
-    if (resolved) {
-      // Ensure it's not in node_modules
-      if (!resolved.includes("node_modules")) {
-        // Strip extension for consistent matching
-        const withoutExt = resolved.replace(/\.(jsx?|tsx?|json|mjs|cjs)$/i, "");
-        resolvedFiles.add(withoutExt);
-      }
+    if (resolved && !resolved.includes("node_modules")) {
+      const withoutExt = resolved.replace(/\.[^/.]+$/, "");
+      resolvedFiles.add(withoutExt);
     }
   }
 
@@ -295,74 +295,135 @@ async function getSuggestionsFromCode(code, currentFilePath, startLine) {
 }
 
 /**
- * Holistic analysis: gets top suggestions from all snippets.
+ * Calculates the "Hub Score" for a given file by counting its local imports.
+ * This is a lightweight, non-recursive scan.
+ */
+async function getHubScore(filePath, workspaceRoot) {
+  try {
+    const resolvedPathWithExt = await findFileWithExtensions(
+      filePath,
+      workspaceRoot.uri
+    );
+    if (!resolvedPathWithExt) return 0;
+
+    const fileUri = vscode.Uri.joinPath(workspaceRoot.uri, resolvedPathWithExt);
+    const content = await vscode.workspace.fs.readFile(fileUri);
+    const text = Buffer.from(content).toString("utf8");
+
+    const importData = extractImportPaths(text);
+    const projectImportsCount = importData.filter((data) =>
+      isProjectSpecificImport(data.path)
+    ).length;
+
+    return projectImportsCount;
+  } catch (err) {
+    console.warn(`Could not calculate hub score for ${filePath}:`, err.message);
+    return 0;
+  }
+}
+
+/**
+ * Agnostic Ranking Engine: Gets top suggestions from all snippets.
  */
 async function getSuggestionsFromActiveSnippets(allSnippets) {
   try {
-    const suggestionCounts = new Map();
-    const alreadyAddedPaths = new Set();
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0];
-
     if (!workspaceRoot) return;
 
-    // Step 1: Collect already-added files (normalized) from ALL snippets
+    // --- PREPARATION: Collect all files already in context ---
+    const alreadyAddedPaths = new Set();
     for (const snippet of allSnippets) {
       if (snippet.fileName) {
-        // Ensure fileName is relative for comparison
         const relativeFileName = path.isAbsolute(snippet.fileName)
           ? path.relative(workspaceRoot.uri.fsPath, snippet.fileName)
           : snippet.fileName;
-
         const normalized = relativeFileName
           .replace(/\\/g, "/")
-          .replace(/\.(jsx?|tsx?|json|mjs|cjs)$/i, "");
+          .replace(/\.[^/.]+$/, "");
         alreadyAddedPaths.add(normalized);
       }
     }
 
-    // Step 2: Extract suggestions from PRIMARY snippets only, to prevent feedback loop
+    // --- STEP 1: Frequency Score Calculation (Fast Pass) ---
+    const suggestionFrequency = new Map();
     const primarySnippets = allSnippets.filter((s) => s.addedBy === "user");
 
-    for (const snippet of primarySnippets) {
-      if (!snippet.fileName || !snippet.text) continue;
-
-      const suggestions = await getSuggestionsFromCode(
-        snippet.text,
-        snippet.fileName,
-        snippet.startLine || 1
-      );
-
-      // Count occurrences
-      for (const suggestion of suggestions) {
-        const count = suggestionCounts.get(suggestion) || 0;
-        suggestionCounts.set(suggestion, count + 1);
-      }
-    }
-
-    // Step 3: Sort by frequency, filter out already-added, take top N
-    const topSuggestions = Array.from(suggestionCounts.entries())
-      .filter(([filePath]) => !alreadyAddedPaths.has(filePath))
-      .sort((a, b) => b[1] - a[1]) // Sort by count descending
-      .slice(0, MAX_SUGGESTIONS)
-      .map(([filePath]) => filePath);
-
-    // Step 4: Send to webview
-    if (webviewView) {
-      webviewView.webview.postMessage({
-        type: "render-smart-suggestions",
-        payload: {
-          suggestions: topSuggestions,
-        },
-      });
-    }
-  } catch (err) {
-    console.error("Smart suggestions failed:", err);
-    if (webviewView) {
-      webviewView.webview.postMessage({
+    if (primarySnippets.length === 0) {
+      webviewView?.webview.postMessage({
         type: "render-smart-suggestions",
         payload: { suggestions: [] },
       });
+      return;
     }
+
+    for (const snippet of primarySnippets) {
+      if (!snippet.fileName || !snippet.text) continue;
+      const suggestions = await getSuggestionsFromCode(
+        snippet.text,
+        snippet.fileName
+      );
+      for (const suggestion of suggestions) {
+        if (!alreadyAddedPaths.has(suggestion)) {
+          const count = suggestionFrequency.get(suggestion) || 0;
+          suggestionFrequency.set(suggestion, count + 1);
+        }
+      }
+    }
+
+    const highSignalSuggestions = new Map();
+    for (const [filePath, frequency] of suggestionFrequency.entries()) {
+      // Only keep suggestions imported by 2+ primary files
+      if (frequency > 1) {
+        highSignalSuggestions.set(filePath, frequency);
+      }
+    }
+
+    if (highSignalSuggestions.size === 0) {
+      webviewView?.webview.postMessage({
+        type: "render-smart-suggestions",
+        payload: { suggestions: [] },
+      });
+      return; // Stop if no high-signal files are found
+    }
+
+    // --- STEP 2: Hub Analysis (Smart Pass on HIGH-SIGNAL files only) ---
+    const topCandidatesByFreq = Array.from(highSignalSuggestions.keys())
+      .sort(
+        (a, b) => highSignalSuggestions.get(b) - highSignalSuggestions.get(a)
+      )
+      .slice(0, 7);
+
+    const hubScores = new Map();
+    for (const filePath of topCandidatesByFreq) {
+      const score = await getHubScore(filePath, workspaceRoot);
+      hubScores.set(filePath, score);
+    }
+
+    // --- STEP 3: Final Ranking (on HIGH-SIGNAL files only) ---
+    const rankedSuggestions = Array.from(highSignalSuggestions.entries()).map(
+      ([filePath, frequency]) => {
+        const frequencyScore = frequency * 10;
+        const hubScore = hubScores.get(filePath) || 0;
+        return { filePath, score: frequencyScore + hubScore };
+      }
+    );
+
+    const topSuggestions = rankedSuggestions
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_SUGGESTIONS)
+      .map((item) => item.filePath);
+
+    // --- STEP 4: Send to Webview ---
+    webviewView?.webview.postMessage({
+      type: "render-smart-suggestions",
+      payload: { suggestions: topSuggestions },
+    });
+  } catch (err) {
+    console.error("Smart suggestions failed:", err);
+    webviewView?.webview.postMessage({
+      type: "render-smart-suggestions",
+      payload: { suggestions: [] },
+    });
   }
 }
 
@@ -370,7 +431,6 @@ function addSnippetToWebview(destination, source) {
   vscode.commands.executeCommand("snippetfuse.mainView.focus");
 
   const editor = vscode.window.activeTextEditor;
-
   if (!editor) {
     vscode.window.showInformationMessage(
       "No active editor found. Please open a file first."
@@ -422,7 +482,6 @@ function addSnippetToWebview(destination, source) {
     };
 
     if (destination === "main") hasMainSnippet = true;
-
     webviewView.webview.postMessage(snippet);
     vscode.window.showInformationMessage(
       `Added snippet to ${destination === "main" ? "Main Issue" : "Context"}!`
@@ -432,20 +491,15 @@ function addSnippetToWebview(destination, source) {
 
 async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
   vscode.commands.executeCommand("snippetfuse.mainView.focus");
-
-  if (!webviewView || !relativeFilePaths || relativeFilePaths.length === 0) {
+  if (!webviewView || !relativeFilePaths || relativeFilePaths.length === 0)
     return;
-  }
 
   const rootUri = vscode.workspace.workspaceFolders[0].uri;
-  const destination = "context";
   let addedCount = 0;
 
   for (const relativePath of relativeFilePaths) {
     try {
-      // This function now handles paths with and without extensions
       const resolvedPath = await findFileWithExtensions(relativePath, rootUri);
-
       if (!resolvedPath) {
         console.warn(`Could not resolve file path: ${relativePath}`);
         vscode.window.showWarningMessage(
@@ -457,7 +511,6 @@ async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
       const fileUri = vscode.Uri.joinPath(rootUri, resolvedPath);
       const content = await vscode.workspace.fs.readFile(fileUri);
       const text = Buffer.from(content).toString("utf8");
-
       if (!text) continue;
 
       const endLine = text.split(/\r\n|\r|\n/).length;
@@ -465,11 +518,11 @@ async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
       const snippet = {
         type: "add-snippet",
         payload: {
-          fileName: resolvedPath, // use the path with extension
+          fileName: resolvedPath,
           text,
           startLine: 1,
-          endLine: endLine,
-          destination,
+          endLine,
+          destination: "context",
           isFullFile: true,
           addedBy,
         },

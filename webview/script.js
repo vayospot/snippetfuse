@@ -204,7 +204,9 @@ function restoreState() {
 
   if (state.smartSuggestionsOpen) {
     smartSuggestionsDetails.setAttribute("open", "");
-    recalculateSuggestions();
+    // Defer recalculation to allow DOM to update with restored snippets first.
+    // This prevents a race condition on extension reload.
+    setTimeout(recalculateSuggestions, 0);
   } else {
     smartSuggestionsDetails.removeAttribute("open");
   }
@@ -300,7 +302,10 @@ smartSuggestionsPills.addEventListener("click", (e) => {
 });
 
 // UI Update Functions
-function updateCounters() {
+function updateCounters(options = {}) {
+  const { sourceOfChange = "init" } = options; // Can be 'init', 'user', 'suggestion'
+
+  // Step 1: Always update the UI counts and empty states
   const mainContainer = document.querySelector(".main-snippet-container");
   const contextContainer = document.querySelector(
     ".context-snippets-container"
@@ -335,10 +340,17 @@ function updateCounters() {
     contextEmpty.style.display = "none";
   }
 
-  if (smartSuggestionsDetails.hasAttribute("open")) {
-    recalculateSuggestions();
-  } else {
-    shouldRecalculateSuggestions = true;
+  // Step 2: Conditionally recalculate suggestions
+  const isPrimaryChange = sourceOfChange === "user";
+
+  if (isPrimaryChange) {
+    if (smartSuggestionsDetails.hasAttribute("open")) {
+      recalculateSuggestions();
+    } else {
+      // If the panel is closed, flag that a primary change happened,
+      // so we can recalculate the next time it's opened.
+      shouldRecalculateSuggestions = true;
+    }
   }
 }
 
@@ -464,8 +476,9 @@ function attachEventListeners(card, snippet, isMain, container) {
         type: "main-snippet-removed",
       });
     }
+    const wasPrimary = card.dataset.addedBy === "user";
     card.remove();
-    updateCounters();
+    updateCounters({ sourceOfChange: wasPrimary ? "user" : "suggestion" });
     updateTokenCounter();
     saveState();
   });
@@ -507,7 +520,7 @@ window.addEventListener("message", (event) => {
   const message = event.data;
   if (message.type === "add-snippet") {
     renderSnippetCard(message.payload, message.payload.destination);
-    updateCounters();
+    updateCounters({ sourceOfChange: message.payload.addedBy });
     updateTokenCounter();
     saveState();
   } else if (message.type === "render-smart-suggestions") {
@@ -689,7 +702,9 @@ resetButton.addEventListener("click", () => {
   terminalLogInput.value = "";
   terminalLogDetails.removeAttribute("open");
 
-  updateCounters();
+  smartSuggestionsDetails.removeAttribute("open");
+
+  updateCounters({ sourceOfChange: "user" });
   updateTokenCounter();
   saveState();
 });
