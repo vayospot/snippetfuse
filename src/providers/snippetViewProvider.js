@@ -28,6 +28,30 @@ function createSnippetViewProvider(context) {
         context.extensionUri
       );
 
+      const sendSettings = () => {
+        const config = vscode.workspace.getConfiguration("snippetfuse.prompts");
+        const promptSettings = {
+          default: config.get("default"),
+          bugReport: config.get("bugReport"),
+          featureRequest: config.get("featureRequest"),
+          codeReview: config.get("codeReview"),
+        };
+        webviewView.webview.postMessage({
+          type: "initialize-settings",
+          payload: promptSettings,
+        });
+      };
+
+      sendSettings();
+
+      context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration((e) => {
+          if (e.affectsConfiguration("snippetfuse.prompts")) {
+            sendSettings();
+          }
+        })
+      );
+
       webviewView.webview.onDidReceiveMessage(async (message) => {
         switch (message.type) {
           case "show-notification":
@@ -126,9 +150,9 @@ function createSnippetViewProvider(context) {
             }
 
             if (externalInfo && externalInfo.include) {
-              outputContent += "\n\n### External Information\n\n```\n";
-              outputContent += `${externalInfo.text}\n`;
-              outputContent += "```\n---\n";
+              outputContent += "\n\n### External Information\n\n";
+              outputContent += `${externalInfo.text}\n\n`;
+              outputContent += "---\n";
             }
 
             if (includeProjectTree) {

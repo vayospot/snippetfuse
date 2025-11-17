@@ -115,6 +115,52 @@
           "icon": "assets/icon.svg"
         }
       ]
+    },
+    "configuration": {
+      "title": "SnippetFuse",
+      "properties": {
+        "snippetfuse.prompts.default": {
+          "type": "string",
+          "enum": [
+            "bug-report",
+            "feature-request",
+            "code-review",
+            "custom"
+          ],
+          "enumItemLabels": [
+            "Bug Report",
+            "Feature Request",
+            "Code Review",
+            "Custom Prompt"
+          ],
+          "default": "bug-report",
+          "description": "The default prompt template to use when the panel is opened."
+        },
+        "snippetfuse.prompts.bugReport": {
+          "type": "string",
+          "default": "bug-report",
+          "description": "The template for the 'Bug Report' prompt.",
+          "editPresentation": "multilineText"
+        },
+        "snippetfuse.prompts.featureRequest": {
+          "type": "string",
+          "default": "feature-request",
+          "description": "The template for the 'Feature Request' prompt.",
+          "editPresentation": "multilineText"
+        },
+        "snippetfuse.prompts.codeReview": {
+          "type": "string",
+          "default": "code-review",
+          "description": "The template for the 'Code Review' prompt.",
+          "editPresentation": "multilineText"
+        },
+        "snippetfuse.prompts.gitCommit": {
+          "type": "string",
+          "default": "Write a commit message (max 72 chars for the subject) for the following changes, strictly adhering to the Conventional Commits specification. The tone should be formal and objective:",
+          "description": "The template used for the 'Generate AI Commit Context' command in the Source Control panel.",
+          "editPresentation": "multilineText"
+        }
+      }
     }
   },
   "scripts": {

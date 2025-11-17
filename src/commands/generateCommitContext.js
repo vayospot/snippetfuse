@@ -5,9 +5,6 @@ const FILE_DIFF_HARD_LIMIT = 5000; // If a single file diff is over this, summar
 const FILE_DIFF_SNIPPET_LIMIT = 1000; // If a single file diff is over this, use a head/tail snippet.
 const SNIPPET_SIZE = 500; // Size of head and tail snippets when splicing.
 
-const PROMPT_HEADER =
-  "Write a commit message (max 72 chars for the subject) for the following changes, strictly adhering to the Conventional Commits specification. The tone should be formal and objective:\n\n---\n\n";
-
 // Hardcoded files/directories to exclude diff content for
 const HEAVY_EXCLUSION_PATTERNS = [
   /node_modules\//,
@@ -267,7 +264,11 @@ async function generateCommitContext() {
           contextOverflow,
         } = processStagedDiff(stagedDiff, requiresSmartLimits);
 
-        let finalOutput = PROMPT_HEADER;
+        const config = vscode.workspace.getConfiguration("snippetfuse.prompts");
+        const gitCommitPrompt = config.get("gitCommit");
+        const finalPromptHeader = `${gitCommitPrompt}\n\n`;
+
+        let finalOutput = finalPromptHeader;
         let context = finalContext.trim();
 
         // Process context to separate files

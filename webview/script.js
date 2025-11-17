@@ -11,6 +11,10 @@ const MODEL_LIMITS = {
   Gemini: 52760,
 };
 
+let promptTemplates = {};
+let defaultPrompt = "bug-report";
+let isStateRestored = false;
+
 function debounce(func, delay) {
   let timeoutId;
   return function (...args) {
@@ -142,7 +146,15 @@ let shouldRecalculateSuggestions = false;
 
 function restoreState() {
   const state = vscode.getState();
-  if (!state) return;
+  isStateRestored = true;
+
+  if (!state) {
+    // If no state, apply the default from settings
+    applyPromptTemplate(defaultPrompt);
+    updateCounters();
+    updateTokenCounter();
+    return;
+  }
 
   const contextContainer = document.querySelector(
     ".context-snippets-container"
@@ -181,18 +193,13 @@ function restoreState() {
     }
   });
 
-  selectedPromptValue = state.selectedPromptValue || "bug-report";
-  const promptOptions = document.querySelectorAll("#prompt-select-options li");
-  promptOptions.forEach((option) => {
-    if (option.dataset.value === selectedPromptValue) {
-      promptSelectDisplay.querySelector(".selected-prompt").textContent =
-        option.textContent;
-    }
-  });
-
-  customPromptInput.value = state.customPromptValue || "";
-  if (selectedPromptValue === "custom") {
-    customPromptInput.classList.remove("hidden");
+  // Restore custom prompt text if it exists and was selected.
+  if (state.selectedPromptValue === "custom" && state.customPromptValue) {
+    customPromptInput.value = state.customPromptValue;
+    applyPromptTemplate("custom");
+  } else {
+    applyPromptTemplate(defaultPrompt);
+    customPromptInput.value = ""; 
   }
 
   terminalLogInput.value = state.terminalLogValue || "";
@@ -527,31 +534,54 @@ function attachEventListeners(card, snippet, isMain, container) {
 // Message Handling
 window.addEventListener("message", (event) => {
   const message = event.data;
-  if (message.type === "add-snippet") {
-    renderSnippetCard(message.payload, message.payload.destination);
-    updateCounters({ sourceOfChange: message.payload.addedBy });
-    updateTokenCounter();
-    saveState();
-  } else if (message.type === "render-smart-suggestions") {
-    smartSuggestionsLoading.classList.add("hidden");
+  switch (message.type) {
+    case "add-snippet":
+      renderSnippetCard(message.payload, message.payload.destination);
+      updateCounters({ sourceOfChange: message.payload.addedBy });
+      updateTokenCounter();
+      saveState();
+      break;
+    case "render-smart-suggestions":
+      smartSuggestionsLoading.classList.add("hidden");
+      const suggestions = message.payload.suggestions;
+      smartSuggestionsPills.innerHTML = "";
+      if (suggestions.length === 0) {
+        smartSuggestionsEmpty.classList.remove("hidden");
+      } else {
+        smartSuggestionsEmpty.classList.add("hidden");
+        suggestions.forEach((filePath) => {
+          const baseFileName = filePath.split(/[/\\]/).pop();
+          const button = document.createElement("button");
+          button.className = "suggestion-pill";
+          button.title = filePath;
+          button.textContent = `+ ${baseFileName}`;
+          button.dataset.filePath = filePath;
+          smartSuggestionsPills.appendChild(button);
+        });
+      }
+      break;
+    case "initialize-settings":
+      promptTemplates = {
+        "bug-report": message.payload.bugReport,
+        "feature-request": message.payload.featureRequest,
+        "code-review": message.payload.codeReview,
+      };
+      const newDefault = message.payload.default;
 
-    const suggestions = message.payload.suggestions;
-    smartSuggestionsPills.innerHTML = "";
-
-    if (suggestions.length === 0) {
-      smartSuggestionsEmpty.classList.remove("hidden");
-    } else {
-      smartSuggestionsEmpty.classList.add("hidden");
-      suggestions.forEach((filePath) => {
-        const baseFileName = filePath.split(/[/\\]/).pop();
-        const button = document.createElement("button");
-        button.className = "suggestion-pill";
-        button.title = filePath;
-        button.textContent = `+ ${baseFileName}`;
-        button.dataset.filePath = filePath;
-        smartSuggestionsPills.appendChild(button);
-      });
-    }
+      if (isStateRestored && newDefault !== defaultPrompt) {
+        defaultPrompt = newDefault;
+        // If user is not on a custom prompt, apply the new default setting live
+        if (selectedPromptValue !== "custom") {
+          applyPromptTemplate(newDefault);
+          saveState();
+        }
+      } else {
+        defaultPrompt = newDefault;
+        if (!isStateRestored) {
+          restoreState();
+        }
+      }
+      break;
   }
 });
 
@@ -561,6 +591,22 @@ const promptSelectOptions = document.getElementById("prompt-select-options");
 const customPromptInput = document.getElementById("custom-prompt-input");
 
 let selectedPromptValue = "bug-report";
+
+function applyPromptTemplate(value) {
+  selectedPromptValue = value;
+  const option = promptSelectOptions.querySelector(`[data-value="${value}"]`);
+  if (option) {
+    promptSelectDisplay.querySelector(".selected-prompt").textContent =
+      option.textContent;
+  }
+
+  if (value === "custom") {
+    customPromptInput.classList.remove("hidden");
+    customPromptInput.focus();
+  } else {
+    customPromptInput.classList.add("hidden");
+  }
+}
 
 promptSelectDisplay.addEventListener("click", () => {
   promptSelectOptions.classList.toggle("hidden");
@@ -573,19 +619,11 @@ document.addEventListener("click", (event) => {
 });
 
 promptSelectOptions.addEventListener("click", (event) => {
-  const selectedLi = event.target;
-  if (selectedLi.tagName === "LI") {
-    selectedPromptValue = selectedLi.dataset.value;
-    promptSelectDisplay.querySelector(".selected-prompt").textContent =
-      selectedLi.textContent;
+  const selectedLi = event.target.closest("li");
+  if (selectedLi) {
+    const value = selectedLi.dataset.value;
+    applyPromptTemplate(value);
     promptSelectOptions.classList.add("hidden");
-
-    if (selectedPromptValue === "custom") {
-      customPromptInput.classList.remove("hidden");
-      customPromptInput.focus();
-    } else {
-      customPromptInput.classList.add("hidden");
-    }
     saveState();
   }
 });
@@ -644,9 +682,11 @@ function getFullContext() {
     snippets.push({ fileInfo, code, note });
   });
 
-  const promptType = selectedPromptValue;
   const promptText =
-    promptType === "custom" ? customPromptInput.value : promptType;
+    selectedPromptValue === "custom"
+      ? customPromptInput.value
+      : promptTemplates[selectedPromptValue] || "";
+
   const terminalLog = {
     include:
       terminalLogInput.value.trim().length > 0 &&
@@ -665,7 +705,7 @@ function getFullContext() {
     promptText,
     snippets,
     terminalLog,
-    externalInfo, // New
+    externalInfo,
     includeProjectTree,
   };
 }
@@ -709,11 +749,8 @@ resetButton.addEventListener("click", () => {
   mainSnippetContainer.innerHTML = "";
   contextSnippetContainer.innerHTML = "";
 
-  selectedPromptValue = "bug-report";
-  promptSelectDisplay.querySelector(".selected-prompt").textContent =
-    "Bug Report";
   customPromptInput.value = "";
-  customPromptInput.classList.add("hidden");
+  applyPromptTemplate(defaultPrompt);
 
   addProjectTreeCheckbox.checked = false;
 
@@ -803,9 +840,6 @@ function subscribeToContentChanges() {
 }
 
 // Initialize
-restoreState();
-updateCounters();
-updateTokenCounter();
 subscribeToContentChanges();
 
 // Help button functionality
