@@ -95,6 +95,7 @@ p {
   color: var(--vscode-icon-foreground);
   cursor: pointer;
   transition: background-color 0.15s ease;
+  text-decoration: none;
 }
 
 .icon-btn:hover {
@@ -291,6 +292,8 @@ p {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  min-height: 300px;
   padding: 32px 16px;
   text-align: center;
   background: var(--vscode-editor-background);

@@ -582,7 +582,6 @@ function attachEventListeners(card, snippet) {
 
 // Drag and Drop Handlers
 function handleDragStart(e) {
-
   draggedElement = this;
   this.classList.add("dragging");
   e.dataTransfer.effectAllowed = "move";
@@ -988,11 +987,4 @@ function subscribeToContentChanges() {
 
 // Initialize
 subscribeToContentChanges();
-
-// Help button functionality
-const helpButton = document.querySelector(".help-button");
-helpButton.addEventListener("click", () => {
-  vscode.postMessage({
-    type: "show-help",
-  });
-});
+restoreState();
