@@ -1,7 +1,7 @@
 const { addSnippetToWebview } = require("./addSnippet");
 
 function addMainSnippet() {
-  addSnippetToWebview("main");
+  addSnippetToWebview({ isMain: true });
 }
 
 module.exports = { addMainSnippet };

@@ -29,10 +29,6 @@
         "title": "Set Main Issue (SnippetFuse)"
       },
       {
-        "command": "snippetfuse.addContextSnippet",
-        "title": "Append to Context Field (SnippetFuse)"
-      },
-      {
         "command": "snippetfuse.addTitleContextSnippet",
         "title": "Add File to Context (SnippetFuse)"
       },
@@ -59,11 +55,6 @@
         "command": "snippetfuse.addMainSnippet",
         "key": "alt+m",
         "when": "editorTextFocus && editorHasSelection"
-      },
-      {
-        "command": "snippetfuse.addContextSnippet",
-        "key": "alt+s",
-        "when": "editorTextFocus && editorHasSelection"
       }
     ],
     "menus": {
@@ -74,11 +65,6 @@
         },
         {
           "command": "snippetfuse.addMainSnippet",
-          "group": "9_cutcopypaste@5",
-          "when": "editorHasSelection"
-        },
-        {
-          "command": "snippetfuse.addContextSnippet",
           "group": "9_cutcopypaste@5",
           "when": "editorHasSelection"
         }

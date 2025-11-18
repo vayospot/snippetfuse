@@ -2,19 +2,15 @@ const vscode = require("vscode");
 const path = require("path");
 
 let webviewView;
-let hasMainSnippet = false;
 const MAX_SUGGESTIONS = 4;
 
 function setWebview(view) {
   webviewView = view;
 }
 
-function hasMain() {
-  return hasMainSnippet;
-}
-
+// Deprecated...
 function resetMain() {
-  hasMainSnippet = false;
+  // ...but kept for safety in case other parts of the extension call it.
 }
 
 /**
@@ -357,7 +353,8 @@ async function getSuggestionsFromActiveSnippets(allSnippets) {
     }
 
     for (const snippet of primarySnippets) {
-      if (!snippet.fileName || !snippet.text) continue;
+      if (snippet.type !== "code" || !snippet.fileName || !snippet.text)
+        continue;
       const suggestions = await getSuggestionsFromCode(
         snippet.text,
         snippet.fileName
@@ -427,7 +424,9 @@ async function getSuggestionsFromActiveSnippets(allSnippets) {
   }
 }
 
-function addSnippetToWebview(destination, source) {
+function addSnippetToWebview(options = {}) {
+  const { isMain = false, source = "editor" } = options;
+
   vscode.commands.executeCommand("snippetfuse.mainView.focus");
 
   const editor = vscode.window.activeTextEditor;
@@ -452,7 +451,7 @@ function addSnippetToWebview(destination, source) {
     text = editor.document.getText(rangeToUse);
   } else {
     vscode.window.showInformationMessage(
-      "Please make a selection to add a snippet to Context."
+      "Please make a selection to add a snippet."
     );
     return;
   }
@@ -472,20 +471,18 @@ function addSnippetToWebview(destination, source) {
     const snippet = {
       type: "add-snippet",
       payload: {
+        type: "code",
         fileName: relativePath,
         text,
         startLine,
         endLine,
-        destination,
-        addedBy: "user", // Mark as a primary, user-added snippet
+        isMain: isMain,
+        addedBy: "user",
       },
     };
 
-    if (destination === "main") hasMainSnippet = true;
     webviewView.webview.postMessage(snippet);
-    vscode.window.showInformationMessage(
-      `Added snippet to ${destination === "main" ? "Main Issue" : "Context"}!`
-    );
+    vscode.window.showInformationMessage(`Added snippet to Context!`);
   }
 }
 
@@ -518,13 +515,14 @@ async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
       const snippet = {
         type: "add-snippet",
         payload: {
+          type: "code",
           fileName: resolvedPath,
           text,
           startLine: 1,
           endLine,
-          destination: "context",
           isFullFile: true,
           addedBy,
+          isMain: false,
         },
       };
 
@@ -537,7 +535,7 @@ async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
 
   if (addedCount > 0) {
     vscode.window.showInformationMessage(
-      `Added ${addedCount} file(s) to Context snippets!`
+      `Added ${addedCount} file(s) to Context!`
     );
   }
 }
@@ -545,7 +543,6 @@ async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
 module.exports = {
   addSnippetToWebview,
   setWebview,
-  hasMain,
   resetMain,
   addFullFileToWebview,
   getSuggestionsFromActiveSnippets,
