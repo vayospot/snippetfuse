@@ -35,6 +35,7 @@ function createSnippetViewProvider(context) {
           bugReport: config.get("bugReport"),
           featureRequest: config.get("featureRequest"),
           codeReview: config.get("codeReview"),
+          requestFullCodePrompt: config.get("requestFullCodePrompt"),
         };
         webviewView.webview.postMessage({
           type: "initialize-settings",
@@ -122,38 +123,27 @@ function createSnippetViewProvider(context) {
           }
 
           case "export-content": {
-            const {
-              promptText,
-              snippets,
-              terminalLog,
-              externalInfo,
-              includeProjectTree,
-              format,
-            } = message.payload;
+            const { promptText, snippets, includeProjectTree, format } =
+              message.payload;
             let outputContent = `${promptText}\n---\n`;
 
             snippets.forEach((snippet) => {
-              outputContent += `### ${snippet.fileInfo}\n\n`;
-              outputContent += "```\n";
-              outputContent += `${snippet.code}\n`;
-              outputContent += "```\n";
+              if (snippet.type === "code") {
+                outputContent += `### ${snippet.fileInfo}\n\n`;
+                outputContent += "```\n";
+                outputContent += `${snippet.code}\n`;
+                outputContent += "```\n";
+              } else if (snippet.type === "terminal") {
+                outputContent += `\n\n### Terminal Log\n\n\`\`\`\n${snippet.code}\n\`\`\`\n`;
+              } else if (snippet.type === "external") {
+                outputContent += `\n\n### External Information\n\n${snippet.code}\n`;
+              }
+
               if (snippet.note) {
                 outputContent += `> ${snippet.note}\n\n`;
               }
               outputContent += "---\n";
             });
-
-            if (terminalLog.include) {
-              outputContent += "\n\n### Terminal Log\n\n```\n";
-              outputContent += `${terminalLog.text}\n`;
-              outputContent += "```\n---\n";
-            }
-
-            if (externalInfo && externalInfo.include) {
-              outputContent += "\n\n### External Information\n\n";
-              outputContent += `${externalInfo.text}\n\n`;
-              outputContent += "---\n";
-            }
 
             if (includeProjectTree) {
               const rootPath = vscode.workspace.workspaceFolders[0].uri;

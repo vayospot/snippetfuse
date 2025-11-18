@@ -159,6 +159,12 @@
           "default": "Write a commit message (max 72 chars for the subject) for the following changes, strictly adhering to the Conventional Commits specification. The tone should be formal and objective:",
           "description": "The template used for the 'Generate AI Commit Context' command in the Source Control panel.",
           "editPresentation": "multilineText"
+        },
+        "snippetfuse.prompts.requestFullCodePrompt": {
+          "type": "string",
+          "default": "IMPORTANT: For all important code changes, please provide the complete, updated code file. Do not use partial snippets or diffs.",
+          "description": "The text appended to the prompt when 'Request full code from AI' is checked.",
+          "editPresentation": "multilineText"
         }
       }
     }

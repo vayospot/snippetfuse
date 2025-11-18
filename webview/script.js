@@ -14,6 +14,7 @@ const MODEL_LIMITS = {
 };
 
 let promptTemplates = {};
+let requestFullCodePrompt = "";
 let defaultPrompt = "bug-report";
 let isStateRestored = false;
 let draggedElement = null;
@@ -56,6 +57,7 @@ function saveState() {
     selectedPromptValue,
     customPromptValue: customPromptInput.value,
     includeProjectTree: addProjectTreeCheckbox.checked,
+    requestFullCode: requestFullCodeCheckbox.checked,
     smartSuggestionsOpen: smartSuggestionsDetails.hasAttribute("open"),
   };
 
@@ -179,6 +181,7 @@ function restoreState() {
   }
 
   addProjectTreeCheckbox.checked = state.includeProjectTree || false;
+  requestFullCodeCheckbox.checked = state.requestFullCode || false;
 
   if (state.smartSuggestionsOpen) {
     smartSuggestionsDetails.setAttribute("open", "");
@@ -712,6 +715,7 @@ window.addEventListener("message", (event) => {
         "feature-request": message.payload.featureRequest,
         "code-review": message.payload.codeReview,
       };
+      requestFullCodePrompt = message.payload.requestFullCodePrompt;
       const newDefault = message.payload.default;
 
       if (isStateRestored && newDefault !== defaultPrompt) {
@@ -784,9 +788,17 @@ const exportDropdownContent = document.getElementById(
 const addProjectTreeCheckbox = document.getElementById(
   "add-project-tree-checkbox"
 );
+const requestFullCodeCheckbox = document.getElementById(
+  "request-full-code-checkbox"
+);
 
 addProjectTreeCheckbox.addEventListener("change", () => {
   saveState();
+});
+
+requestFullCodeCheckbox.addEventListener("change", () => {
+  saveState();
+  updateTokenCounter();
 });
 
 // Icon Action Buttons (Header)
@@ -854,23 +866,20 @@ function getFullContext() {
     });
   });
 
-  const promptText =
+  let promptText =
     selectedPromptValue === "custom"
       ? customPromptInput.value
       : promptTemplates[selectedPromptValue] || "";
 
-  const includeProjectTree = addProjectTreeCheckbox.checked;
+  if (requestFullCodeCheckbox.checked && requestFullCodePrompt) {
+    promptText += `\n\n${requestFullCodePrompt}`;
+  }
 
-  // Legacy Support (Extension expects terminal/external separated, but now they are in snippets array)
-  // We send empty objects for legacy handlers to avoid errors, but content is in snippets now.
-  const terminalLog = { include: false, text: "" };
-  const externalInfo = { include: false, text: "" };
+  const includeProjectTree = addProjectTreeCheckbox.checked;
 
   return {
     promptText,
     snippets,
-    terminalLog,
-    externalInfo,
     includeProjectTree,
   };
 }
@@ -914,6 +923,7 @@ resetButton.addEventListener("click", () => {
   applyPromptTemplate(defaultPrompt);
 
   addProjectTreeCheckbox.checked = false;
+  requestFullCodeCheckbox.checked = false;
   smartSuggestionsDetails.removeAttribute("open");
 
   updateCounters({ sourceOfChange: "user" });
@@ -966,6 +976,7 @@ function subscribeToContentChanges() {
     getContainer(),
     document.getElementById("custom-prompt-input"),
     document.getElementById("add-project-tree-checkbox"),
+    document.getElementById("request-full-code-checkbox"),
   ];
 
   containers.forEach((element) => {
