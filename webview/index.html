@@ -27,7 +27,7 @@
       </header>
 
       <!-- Main Content -->
-      <main class="main-content">
+      <main class="main-content" id="main-scroll-container">
         <!-- Prompt Template Selection -->
         <section class="prompt-section">
           <div class="section-label">
@@ -65,43 +65,40 @@
           ></textarea>
         </section>
 
-        <!-- Main Issue Section -->
+        <!-- Code Context Section -->
         <section class="snippets-section">
-          <div class="section-header">
-            <div class="section-label-with-count">
-              <span class="codicon codicon-bug"></span>
-              <h2>Main Issue</h2>
-              <span class="count-badge main-count">0</span>
-            </div>
-          </div>
-          <div class="main-snippet-container snippet-list">
-            <div class="empty-state">
-              <span class="empty-icon">📍</span>
-              <div class="empty-content">
-                <h3>Set the Main Issue</h3>
-                <p>Select code, right-click → Set Main Issue</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Context Snippets Section -->
-        <section class="snippets-section">
-          <div class="section-header">
+          <div class="section-header context-header">
             <div class="section-label-with-count">
               <span class="codicon codicon-references"></span>
-              <h2>Context Snippets</h2>
-              <span class="count-badge context-count">0</span>
+              <h2>Contexts</h2>
+              <span class="count-badge unified-count">0</span>
+            </div>
+            <div class="header-inline-actions">
+              <button
+                id="quick-add-files-btn"
+                class="icon-btn"
+                title="Add Files from Project"
+              >
+                <span class="codicon codicon-files"></span>
+              </button>
+              <button
+                id="add-external-info-btn"
+                class="icon-btn"
+                title="Add External Info"
+              >
+                <span class="codicon codicon-globe"></span>
+              </button>
+              <button
+                id="add-terminal-log-btn"
+                class="icon-btn"
+                title="Add Terminal Logs"
+              >
+                <span class="codicon codicon-terminal"></span>
+              </button>
             </div>
           </div>
-          <div class="context-snippets-container snippet-list">
-            <div class="empty-state">
-              <span class="empty-icon">🔗</span>
-              <div class="empty-content">
-                <h3>Add Related Context</h3>
-                <p>Select code, right-click → Add Snippet</p>
-              </div>
-            </div>
+          <div class="unified-context-container snippet-list">
+            <!-- Empty state and cards will be injected here -->
           </div>
         </section>
 
@@ -144,47 +141,6 @@
                 </div>
               </div>
             </details>
-
-            <!-- Terminal Log -->
-            <details class="control-item expandable" id="terminal-log-details">
-              <summary class="control-summary">
-                <span class="control-label">Add Terminal Logs</span>
-                <span class="codicon codicon-add expand-icon"></span>
-              </summary>
-              <div class="control-content">
-                <textarea
-                  id="terminal-log-input"
-                  class="terminal-input"
-                  placeholder="Paste terminal logs here..."
-                  rows="4"
-                ></textarea>
-              </div>
-            </details>
-
-            <!-- External Info -->
-            <details class="control-item expandable" id="external-info-details">
-              <summary class="control-summary">
-                <span class="control-label">Add External Info</span>
-                <span class="codicon codicon-add expand-icon"></span>
-              </summary>
-              <div class="control-content">
-                <textarea
-                  id="external-info-input"
-                  class="terminal-input"
-                  placeholder="Paste docs, articles, or other text here..."
-                  rows="4"
-                ></textarea>
-              </div>
-            </details>
-
-            <!-- Quick Add Files -->
-            <button
-              id="quick-add-files-button"
-              class="control-item btn-control"
-            >
-              <span class="control-label">Add Files from Project</span>
-              <span class="codicon codicon-chevron-right"></span>
-            </button>
 
             <!-- Project Tree Toggle -->
             <label class="toggle-control">

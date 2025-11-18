@@ -114,6 +114,7 @@ p {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  scroll-behavior: smooth; /* Smooth scroll for auto-scroll */
 }
 
 /* ===== Section Styles ===== */
@@ -131,6 +132,17 @@ p {
 
 .section-header {
   margin-bottom: 8px;
+}
+
+.section-header.context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-inline-actions {
+  display: flex;
+  gap: 2px;
 }
 
 .section-label-with-count {
@@ -271,6 +283,7 @@ p {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding-bottom: 20px; /* Extra space for drop at bottom */
 }
 
 /* ===== Empty State ===== */
@@ -301,7 +314,45 @@ p {
   border: 1px solid var(--vscode-panel-border);
   border-radius: 4px;
   overflow: hidden;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    transform 0.2s ease;
+  position: relative;
+}
+
+/* Drop Indicators */
+.snippet-card::before,
+.snippet-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 10;
+  transition: background-color 0.1s;
+}
+
+.snippet-card::before {
+  top: -5px;
+}
+.snippet-card::after {
+  bottom: -5px;
+}
+
+.snippet-card.drop-target-top {
+  box-shadow: 0 -2px 0 0 var(--vscode-focusBorder);
+  border-top-color: var(--vscode-focusBorder);
+}
+
+.snippet-card.drop-target-bottom {
+  box-shadow: 0 2px 0 0 var(--vscode-focusBorder);
+  border-bottom-color: var(--vscode-focusBorder);
+}
+
+.snippet-card.dragging {
+  opacity: 0.4;
+  border: 1px dashed var(--vscode-descriptionForeground);
 }
 
 .snippet-card:hover {
@@ -310,21 +361,66 @@ p {
 }
 
 .card-header {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 2px;
   padding: 8px 10px;
   background: var(--vscode-sideBarSectionHeader-background);
-  /*   background: var(--vscode-editor-background); */
   border-bottom: 1px solid var(--vscode-panel-border);
-  gap: 8px;
+  /* min-height: 32px; */
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--vscode-icon-foreground);
+  cursor: grab;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.snippet-card:hover .drag-handle {
+  opacity: 1;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.star-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+  user-select: none;
+}
+
+.star-indicator:hover {
+  transform: scale(1.2);
+}
+
+.star-indicator.filled {
+  color: var(--vscode-charts-yellow);
+}
+
+.star-indicator.hollow {
+  color: var(--vscode-descriptionForeground);
 }
 
 .file-info {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
   font-size: 12px;
   font-family: var(--vscode-editor-font-family);
   color: var(--vscode-editor-foreground);
@@ -333,6 +429,15 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   transition: color 0.15s ease;
+  padding-right: 80px;
+}
+
+.snippet-card.text-card .file-info {
+  cursor: default;
+}
+
+.snippet-card:hover .file-info {
+  padding-right: 0;
 }
 
 .file-info:hover {
@@ -340,15 +445,29 @@ p {
   text-decoration: underline;
 }
 
+.snippet-card.text-card .file-info:hover {
+  color: var(--vscode-editor-foreground);
+  text-decoration: none;
+}
+
 .card-actions {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   gap: 2px;
   opacity: 0;
+  pointer-events: none;
+  background: var(--vscode-sideBarSectionHeader-background);
+  padding: 2px;
+  border-radius: 3px;
   transition: opacity 0.15s ease;
 }
 
 .snippet-card:hover .card-actions {
   opacity: 1;
+  pointer-events: all;
 }
 
 .action-button {
@@ -374,7 +493,7 @@ p {
   color: var(--vscode-errorForeground);
 }
 
-/* ===== Code Preview ===== */
+/* ===== Code Preview & Content ===== */
 .code-preview-container {
   position: relative;
   background: var(--vscode-editor-background);
@@ -417,26 +536,23 @@ p {
   pointer-events: none;
 }
 
-.expand-actions {
-  padding: 8px;
-  border-top: 1px solid var(--vscode-panel-border);
-  background: var(--vscode-sideBarSectionHeader-background);
-  text-align: center;
-}
-
-.show-more-button {
-  padding: 4px 12px;
-  background: transparent;
+/* Text Card Content (Terminal/External) */
+.card-text-content {
+  width: 100%;
+  padding: 12px;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
   border: none;
-  border-radius: 3px;
-  color: var(--vscode-textLink-foreground);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 80px;
 }
 
-.show-more-button:hover {
-  background: var(--vscode-list-hoverBackground);
+.card-text-content:focus {
+  outline: none;
+  background: var(--vscode-input-background);
 }
 
 /* ===== Note Section ===== */
@@ -519,7 +635,7 @@ p {
 }
 
 .expandable[open] .expand-icon.codicon-add::before {
-  content: "\eaba"; /* close glyph */
+  content: "\eaba";
 }
 
 .control-content {
@@ -578,52 +694,6 @@ p {
   box-shadow: 0 2px 4px var(--vscode-widget-shadow);
 }
 
-/* Terminal Input */
-.terminal-input {
-  width: 100%;
-  padding: 8px 10px;
-  background: var(
-    --vscode-terminal-background,
-    var(--vscode-editor-background)
-  );
-  color: var(--vscode-terminal-foreground, var(--vscode-editor-foreground));
-  border: none;
-  border-radius: 2px;
-  font-family: var(--vscode-editor-font-family);
-  font-size: 12px;
-  resize: vertical;
-  min-height: 100px;
-  transition: border-color 0.15s ease;
-}
-
-.terminal-input:focus {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-  border-color: var(--vscode-focusBorder);
-}
-
-/* Button Control */
-.btn-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--vscode-foreground);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.btn-control:hover {
-  background: var(--vscode-list-hoverBackground);
-}
-
-.btn-control .codicon:last-child {
-  margin-left: auto;
-}
-
 /* Toggle Control */
 .toggle-control {
   display: flex;
@@ -642,11 +712,9 @@ p {
 .toggle-input {
   appearance: none;
   -webkit-appearance: none;
-
   width: 16px;
   height: 16px;
   margin: 0;
-
   background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border);
   border-radius: 3px;
@@ -676,19 +744,10 @@ p {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) rotate(45deg);
-
   width: 4px;
   height: 8px;
-
   border: solid var(--vscode-button-foreground);
   border-width: 0 2px 2px 0;
-}
-
-.toggle-control {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 /* ===== Footer ===== */
@@ -816,6 +875,26 @@ p {
 
 .dropdown-item:hover {
   background: var(--vscode-list-hoverBackground);
+}
+
+/* ===== Drag & Drop Animations ===== */
+@keyframes promotionAnimation {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-10px) scale(1.02);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.snippet-card.promoting {
+  animation: promotionAnimation 0.3s ease;
 }
 
 /* ===== Utility Classes ===== */

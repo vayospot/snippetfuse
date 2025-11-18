@@ -3,6 +3,8 @@ const vscode = acquireVsCodeApi();
 const TRUNCATION_HEIGHT = 200;
 const DEBOUNCE_SAVE_DELAY = 500;
 const DEBOUNCE_TOKEN_DELAY = 300;
+const SCROLL_ZONE_HEIGHT = 60;
+const SCROLL_SPEED = 10;
 
 const MODEL_LIMITS = {
   ChatGPT: 128000,
@@ -14,6 +16,7 @@ const MODEL_LIMITS = {
 let promptTemplates = {};
 let defaultPrompt = "bug-report";
 let isStateRestored = false;
+let draggedElement = null;
 
 function debounce(func, delay) {
   let timeoutId;
@@ -29,116 +32,103 @@ const debouncedUpdateTokenCounter = debounce(
   DEBOUNCE_TOKEN_DELAY
 );
 
-function createMainEmptyState() {
-  const div = document.createElement("div");
-  div.className = "empty-state";
-  div.innerHTML = `
-    <span class="empty-icon">📍</span>
-    <div class="empty-content">
-      <h3>Set the Main Issue</h3>
-      <p>Select code, right-click → Set Main Issue</p>
-    </div>
-  `;
-  return div;
-}
-
-function createContextEmptyState() {
+function createEmptyState() {
   const div = document.createElement("div");
   div.className = "empty-state";
   div.innerHTML = `
     <span class="empty-icon">🔗</span>
     <div class="empty-content">
-      <h3>Add Related Context</h3>
-      <p>Select code, right-click → Add Snippet</p>
+      <h3>Add Code Context</h3>
+      <p>Select code, right-click → Set Main Issue or Add Snippet</p>
     </div>
   `;
   return div;
 }
 
-function getContainer(destination) {
-  if (destination === "main") {
-    return {
-      container: document.querySelector(".main-snippet-container"),
-      isMain: true,
-    };
-  } else {
-    return {
-      container: document.querySelector(".context-snippets-container"),
-      isMain: false,
-    };
-  }
+function getContainer() {
+  return document.querySelector(".unified-context-container");
 }
 
 // State Management
 function saveState() {
   const state = {
-    mainSnippet: null,
-    contextSnippets: [],
+    snippets: [],
     selectedPromptValue,
     customPromptValue: customPromptInput.value,
-    terminalLogValue: terminalLogInput.value,
-    terminalLogOpen: terminalLogDetails.hasAttribute("open"),
-    externalInfoValue: externalInfoInput.value,
-    externalInfoOpen: externalInfoDetails.hasAttribute("open"),
     includeProjectTree: addProjectTreeCheckbox.checked,
     smartSuggestionsOpen: smartSuggestionsDetails.hasAttribute("open"),
   };
 
-  const mainCard = document.querySelector(
-    ".main-snippet-container .snippet-card"
-  );
-  if (mainCard) {
-    state.mainSnippet = extractSnippetData(mainCard);
-  }
-
   document
-    .querySelectorAll(".context-snippets-container .snippet-card")
+    .querySelectorAll(".unified-context-container .snippet-card")
     .forEach((card) => {
-      state.contextSnippets.push(extractSnippetData(card));
+      state.snippets.push(extractSnippetData(card));
     });
 
   vscode.setState(state);
 }
 
 function extractSnippetData(card) {
-  const fileInfo =
-    card.dataset.fileInfo || card.querySelector(".file-info")?.title.trim();
-  const code = card.querySelector(".code-preview").textContent;
+  // Determine Type
+  let type = "code";
+  if (card.dataset.type) {
+    type = card.dataset.type;
+  }
+
+  // Common Data
   const noteInput = card.querySelector(".note-input");
   const note = noteInput ? noteInput.value || "" : "";
   const noteVisible = !card
     .querySelector(".note-section")
     .classList.contains("hidden");
-  const isFullFile = card.classList.contains("full-file");
   const addedBy = card.dataset.addedBy || "user";
+  const isMain = card.classList.contains("main-snippet");
 
-  let fileName, startLine, endLine;
-  if (isFullFile) {
-    fileName = fileInfo;
-    startLine = 1;
-    endLine = 1;
-  } else {
-    const match = fileInfo.match(/^(.+):(\d+)-(\d+)$/);
-    if (match) {
-      fileName = match[1];
-      startLine = parseInt(match[2]);
-      endLine = parseInt(match[3]);
-    } else {
+  // Specific Data based on Type
+  let text, fileName, startLine, endLine, isFullFile;
+
+  if (type === "code") {
+    const fileInfo =
+      card.dataset.fileInfo || card.querySelector(".file-info")?.title.trim();
+    text = card.querySelector(".code-preview").textContent;
+    isFullFile = card.classList.contains("full-file");
+
+    if (isFullFile) {
       fileName = fileInfo;
       startLine = 1;
       endLine = 1;
+    } else {
+      const match = fileInfo.match(/^(.+):(\d+)-(\d+)$/);
+      if (match) {
+        fileName = match[1];
+        startLine = parseInt(match[2]);
+        endLine = parseInt(match[3]);
+      } else {
+        fileName = fileInfo;
+        startLine = 1;
+        endLine = 1;
+      }
     }
+  } else {
+    // Terminal or External
+    text = card.querySelector(".card-text-content").value;
+    fileName = type === "terminal" ? "Terminal Log" : "External Info";
+    startLine = 0;
+    endLine = 0;
+    isFullFile = false;
   }
 
   return {
+    type,
     fileName,
     startLine,
     endLine,
-    text: code,
+    text,
     note,
     noteVisible,
     isFullFile,
     addedBy,
+    isMain,
   };
 }
 
@@ -149,79 +139,49 @@ function restoreState() {
   isStateRestored = true;
 
   if (!state) {
-    // If no state, apply the default from settings
     applyPromptTemplate(defaultPrompt);
     updateCounters();
     updateTokenCounter();
     return;
   }
 
-  const contextContainer = document.querySelector(
-    ".context-snippets-container"
-  );
+  const container = getContainer();
+  container.innerHTML = "";
 
-  if (state.mainSnippet) {
-    renderSnippetCard(state.mainSnippet, "main");
-    const mainCard = document.querySelector(
-      ".main-snippet-container .snippet-card"
-    );
-    if (mainCard && state.mainSnippet.note) {
-      const noteInput = mainCard.querySelector(".note-input");
-      const noteSection = mainCard.querySelector(".note-section");
-      noteInput.value = state.mainSnippet.note;
-      if (state.mainSnippet.noteVisible) {
-        noteSection.classList.remove("hidden");
+  if (state.snippets) {
+    state.snippets.forEach((snippet) => {
+      renderSnippetCard(snippet);
+      const cards = document.querySelectorAll(
+        ".unified-context-container .snippet-card"
+      );
+      const lastCard = cards[cards.length - 1];
+
+      if (lastCard) {
+        // Restore note
+        if (snippet.note) {
+          const noteInput = lastCard.querySelector(".note-input");
+          const noteSection = lastCard.querySelector(".note-section");
+          noteInput.value = snippet.note;
+          if (snippet.noteVisible) {
+            noteSection.classList.remove("hidden");
+          }
+        }
       }
-    }
+    });
   }
 
-  contextContainer.innerHTML = "";
-
-  state.contextSnippets.forEach((snippet) => {
-    renderSnippetCard(snippet, "context");
-    const cards = document.querySelectorAll(
-      ".context-snippets-container .snippet-card"
-    );
-    const lastCard = cards[cards.length - 1];
-    if (lastCard && snippet.note) {
-      const noteInput = lastCard.querySelector(".note-input");
-      const noteSection = lastCard.querySelector(".note-section");
-      noteInput.value = snippet.note;
-      if (snippet.noteVisible) {
-        noteSection.classList.remove("hidden");
-      }
-    }
-  });
-
-  // Restore custom prompt text if it exists and was selected.
   if (state.selectedPromptValue === "custom" && state.customPromptValue) {
     customPromptInput.value = state.customPromptValue;
     applyPromptTemplate("custom");
   } else {
     applyPromptTemplate(defaultPrompt);
-    customPromptInput.value = ""; 
-  }
-
-  terminalLogInput.value = state.terminalLogValue || "";
-  if (state.terminalLogOpen) {
-    terminalLogDetails.setAttribute("open", "");
-  } else {
-    terminalLogDetails.removeAttribute("open");
-  }
-
-  externalInfoInput.value = state.externalInfoValue || "";
-  if (state.externalInfoOpen) {
-    externalInfoDetails.setAttribute("open", "");
-  } else {
-    externalInfoDetails.removeAttribute("open");
+    customPromptInput.value = "";
   }
 
   addProjectTreeCheckbox.checked = state.includeProjectTree || false;
 
   if (state.smartSuggestionsOpen) {
     smartSuggestionsDetails.setAttribute("open", "");
-    // Defer recalculation to allow DOM to update with restored snippets first.
-    // This prevents a race condition on extension reload.
     setTimeout(recalculateSuggestions, 0);
   } else {
     smartSuggestionsDetails.removeAttribute("open");
@@ -247,17 +207,13 @@ const smartSuggestionsEmpty = document.getElementById(
 
 function getActiveSnippetsForSuggestionAnalysis() {
   const allSnippets = [];
-  const mainCard = document.querySelector(
-    ".main-snippet-container .snippet-card"
-  );
-  if (mainCard) {
-    allSnippets.push(extractSnippetData(mainCard));
-  }
-
   document
-    .querySelectorAll(".context-snippets-container .snippet-card")
+    .querySelectorAll(".unified-context-container .snippet-card")
     .forEach((card) => {
-      allSnippets.push(extractSnippetData(card));
+      const data = extractSnippetData(card);
+      if (data.type === "code") {
+        allSnippets.push(data);
+      }
     });
   return allSnippets;
 }
@@ -319,124 +275,138 @@ smartSuggestionsPills.addEventListener("click", (e) => {
 
 // UI Update Functions
 function updateCounters(options = {}) {
-  const { sourceOfChange = "init" } = options; // Can be 'init', 'user', 'suggestion'
+  const { sourceOfChange = "init" } = options;
 
-  // Step 1: Always update the UI counts and empty states
-  const mainContainer = document.querySelector(".main-snippet-container");
-  const contextContainer = document.querySelector(
-    ".context-snippets-container"
-  );
+  const container = getContainer();
+  const totalCount = container.querySelectorAll(".snippet-card").length;
 
-  const mainCount = mainContainer.querySelectorAll(".snippet-card").length;
-  const contextCount =
-    contextContainer.querySelectorAll(".snippet-card").length;
+  document.querySelector(".unified-count").textContent = totalCount;
 
-  document.querySelector(".main-count").textContent = mainCount;
-  document.querySelector(".context-count").textContent = contextCount;
-
-  let mainEmpty = mainContainer.querySelector(".empty-state");
-  if (mainCount === 0) {
-    if (!mainEmpty) {
-      mainEmpty = createMainEmptyState();
-      mainContainer.appendChild(mainEmpty);
+  let emptyState = container.querySelector(".empty-state");
+  if (totalCount === 0) {
+    if (!emptyState) {
+      emptyState = createEmptyState();
+      container.appendChild(emptyState);
     }
-    mainEmpty.style.display = "flex";
-  } else if (mainEmpty) {
-    mainEmpty.style.display = "none";
+    emptyState.style.display = "flex";
+  } else if (emptyState) {
+    emptyState.style.display = "none";
   }
 
-  let contextEmpty = contextContainer.querySelector(".empty-state");
-  if (contextCount === 0) {
-    if (!contextEmpty) {
-      contextEmpty = createContextEmptyState();
-      contextContainer.appendChild(contextEmpty);
-    }
-    contextEmpty.style.display = "flex";
-  } else if (contextEmpty) {
-    contextEmpty.style.display = "none";
-  }
-
-  // Step 2: Conditionally recalculate suggestions
   const isPrimaryChange = sourceOfChange === "user";
 
   if (isPrimaryChange) {
     if (smartSuggestionsDetails.hasAttribute("open")) {
       recalculateSuggestions();
     } else {
-      // If the panel is closed, flag that a primary change happened,
-      // so we can recalculate the next time it's opened.
       shouldRecalculateSuggestions = true;
     }
   }
 }
 
-function renderSnippetCard(snippet, destination) {
-  const { container, isMain } = getContainer(destination);
-  if (isMain) {
-    container.innerHTML = "";
-  }
+function renderSnippetCard(snippet) {
+  const container = getContainer();
+  // Note: Logic changed, existing cards don't force "Main" status unless user sets it.
+  const isMain = snippet.isMain || false;
 
   const card = createSnippetCardElement(snippet, isMain);
-  setupTruncation(card, snippet.isFullFile || false);
-  attachEventListeners(card, snippet, isMain, container);
 
-  container.appendChild(card);
+  if (snippet.type === "code") {
+    setupTruncation(card, snippet.isFullFile || false);
+  }
+
+  attachEventListeners(card, snippet);
+
+  if (isMain) {
+    container.insertBefore(card, container.firstChild);
+  } else {
+    container.appendChild(card);
+  }
 }
 
 function createSnippetCardElement(snippet, isMain) {
+  const type = snippet.type || "code"; // code, terminal, external
   const isFullFile = snippet.isFullFile || false;
-  const baseFileName = snippet.fileName.split(/[/\\]/).pop();
-  const displayFileName = isFullFile
-    ? baseFileName
-    : `${baseFileName}:${snippet.startLine}-${snippet.endLine}`;
-  const tooltipTitle = isFullFile
-    ? snippet.fileName
-    : `${snippet.fileName}:${snippet.startLine}-${snippet.endLine}`;
-  const fileIcon = isFullFile ? "codicon-file-code" : "codicon-code";
+
+  let displayFileName = snippet.fileName;
+  let tooltipTitle = snippet.fileName;
+
+  if (type === "code") {
+    const baseFileName = snippet.fileName.split(/[/\\]/).pop();
+    displayFileName = isFullFile
+      ? baseFileName
+      : `${baseFileName}:${snippet.startLine}-${snippet.endLine}`;
+    tooltipTitle = isFullFile
+      ? snippet.fileName
+      : `${snippet.fileName}:${snippet.startLine}-${snippet.endLine}`;
+  }
 
   const card = document.createElement("div");
   card.className = `snippet-card ${isMain ? "main-snippet" : ""} ${
     isFullFile ? "full-file" : ""
-  }`;
+  } ${type !== "code" ? "text-card" : ""}`;
+
   card.dataset.fileInfo = tooltipTitle;
   card.dataset.addedBy = snippet.addedBy || "user";
+  card.dataset.type = type;
+  card.setAttribute("draggable", "false");
+
+  // Content construction based on type
+  let contentHtml = "";
+  if (type === "code") {
+    contentHtml = `<div class="code-preview-container truncated"><pre class="code-preview"></pre></div>`;
+  } else {
+    const placeholder =
+      type === "terminal"
+        ? "Paste terminal logs here..."
+        : "Paste docs, articles, or other text here...";
+    contentHtml = `<textarea class="card-text-content" placeholder="${placeholder}"></textarea>`;
+  }
+
+  // Go to file button only for code
+  const goToFileBtn =
+    type === "code"
+      ? `<button class="action-button go-to-file" title="Go to file"><span class="codicon codicon-go-to-file"></span></button>`
+      : "";
 
   card.innerHTML = `
     <div class="card-header">
+      <span class="drag-handle codicon codicon-gripper" title="Drag to reorder"></span>
+      <span class="star-indicator ${isMain ? "filled" : "hollow"}" title="${
+    isMain ? "Unset Main" : "Set as Main Snippet"
+  }">
+        ${isMain ? "★" : "☆"}
+      </span>
       <div class="file-info" title="${tooltipTitle}">
-        <span class="codicon ${fileIcon}"></span>
         ${displayFileName}
       </div>
       <div class="card-actions">
-        ${
-          !isMain
-            ? '<button class="action-button move-up" title="Move up"><span class="codicon codicon-arrow-up"></span></button>'
-            : ""
-        }
-        ${
-          !isMain
-            ? '<button class="action-button move-down" title="Move down"><span class="codicon codicon-arrow-down"></span></button>'
-            : ""
-        }
         <button class="action-button add-note" title="Add note">
           <span class="codicon codicon-note"></span>
         </button>
+        ${goToFileBtn}
         <button class="action-button danger remove-snippet" title="Remove">
           <span class="codicon codicon-trash"></span>
         </button>
       </div>
     </div>
-    <div class="code-preview-container truncated"><pre class="code-preview"></pre></div>
-    <div class="expand-actions">
-      <button class="show-more-button">Show full</button>
-    </div>
+    ${contentHtml}
     <div class="note-section hidden">
-      <textarea class="note-input" placeholder="Add note for this snippet..."></textarea>
+      <textarea class="note-input" placeholder="Add note for this context..."></textarea>
     </div>
   `;
 
-  const codePreview = card.querySelector(".code-preview");
-  codePreview.textContent = snippet.text.trim();
+  if (type === "code") {
+    const codePreview = card.querySelector(".code-preview");
+    codePreview.textContent = snippet.text.trim();
+  } else {
+    const textarea = card.querySelector(".card-text-content");
+    textarea.value = snippet.text || "";
+    // Auto-focus if it's a new blank card
+    if (!snippet.text && !isStateRestored) {
+      setTimeout(() => textarea.focus(), 50);
+    }
+  }
 
   return card;
 }
@@ -444,6 +414,8 @@ function createSnippetCardElement(snippet, isMain) {
 function setupTruncation(card, isFullFile) {
   const codeContainer = card.querySelector(".code-preview-container");
   const codePreview = card.querySelector(".code-preview");
+
+  if (!codeContainer) return; // Safety check for text cards
 
   if (isFullFile) {
     codeContainer.style.display = "none";
@@ -457,43 +429,126 @@ function setupTruncation(card, isFullFile) {
   }
 }
 
-function attachEventListeners(card, snippet, isMain, container) {
-  const showMoreButton = card.querySelector(".show-more-button");
+function toggleMainStatus(card) {
+  const container = getContainer();
+  const currentMain = container.querySelector(".snippet-card.main-snippet");
+  const isCurrentlyMain = card.classList.contains("main-snippet");
+
+  // 1. Remove existing main status from anywhere
+  if (currentMain) {
+    currentMain.classList.remove("main-snippet");
+    const oldStar = currentMain.querySelector(".star-indicator");
+    oldStar.classList.remove("filled");
+    oldStar.classList.add("hollow");
+    oldStar.textContent = "☆";
+    oldStar.title = "Set as Main Snippet";
+  }
+
+  // 2. If it wasn't main before, make it main now (Toggle ON)
+  if (!isCurrentlyMain) {
+    card.classList.add("main-snippet", "promoting");
+    const newStar = card.querySelector(".star-indicator");
+    newStar.classList.remove("hollow");
+    newStar.classList.add("filled");
+    newStar.textContent = "★";
+    newStar.title = "Unset Main";
+
+    // Move to top with animation
+    if (container.firstChild !== card) {
+      container.insertBefore(card, container.firstChild);
+    }
+
+    setTimeout(() => {
+      card.classList.remove("promoting");
+    }, 300);
+
+    vscode.postMessage({
+      type: "main-snippet-changed",
+      payload: extractSnippetData(card),
+    });
+  } else {
+    // Toggle OFF -> Notify that there is no main snippet
+    vscode.postMessage({
+      type: "main-snippet-removed",
+    });
+  }
+
+  saveState();
+}
+
+function attachEventListeners(card, snippet) {
   const fileNameElement = card.querySelector(".file-info");
   const removeButton = card.querySelector(".remove-snippet");
   const addNoteButton = card.querySelector(".add-note");
+  const goToFileButton = card.querySelector(".go-to-file");
   const noteSection = card.querySelector(".note-section");
   const noteInput = noteSection.querySelector(".note-input");
+  const starIndicator = card.querySelector(".star-indicator");
+  const textContentInput = card.querySelector(".card-text-content");
+  const dragHandle = card.querySelector(".drag-handle");
+
   const isFullFile = snippet.isFullFile || false;
 
-  const jumpPayload = {
-    fileName: snippet.fileName,
-    startLine: isFullFile ? 1 : snippet.startLine,
-    endLine: isFullFile ? 1 : snippet.endLine,
-  };
+  // --- DRAG HANDLE LOGIC ---
+  // Enable draggable ONLY when interacting with the handle.
 
-  showMoreButton.addEventListener("click", () => {
-    vscode.postMessage({
-      type: "jump-to-file",
-      payload: jumpPayload,
-    });
+  dragHandle.addEventListener("mouseenter", () => {
+    card.setAttribute("draggable", "true");
   });
 
-  fileNameElement.addEventListener("click", () => {
-    vscode.postMessage({
-      type: "jump-to-file",
-      payload: jumpPayload,
-    });
+  dragHandle.addEventListener("mouseleave", () => {
+    // Only disable if we aren't actively dragging this card
+    if (!card.classList.contains("dragging")) {
+      card.setAttribute("draggable", "false");
+    }
   });
+
+  // Ensure logic also works for touch/click hybrid scenarios
+  dragHandle.addEventListener("mousedown", () => {
+    card.setAttribute("draggable", "true");
+  });
+
+  // Star click handler
+  starIndicator.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleMainStatus(card);
+  });
+
+  // Go to file handler (Code only)
+  if (goToFileButton) {
+    const jumpPayload = {
+      fileName: snippet.fileName,
+      startLine: isFullFile ? 1 : snippet.startLine,
+      endLine: isFullFile ? 1 : snippet.endLine,
+    };
+
+    goToFileButton.addEventListener("click", () => {
+      vscode.postMessage({
+        type: "jump-to-file",
+        payload: jumpPayload,
+      });
+    });
+
+    fileNameElement.addEventListener("click", () => {
+      vscode.postMessage({
+        type: "jump-to-file",
+        payload: jumpPayload,
+      });
+    });
+  }
 
   removeButton.addEventListener("click", () => {
-    if (card.classList.contains("main-snippet")) {
+    const wasMain = card.classList.contains("main-snippet");
+    const wasPrimary = card.dataset.addedBy === "user";
+
+    card.remove();
+
+    if (wasMain) {
       vscode.postMessage({
         type: "main-snippet-removed",
       });
     }
-    const wasPrimary = card.dataset.addedBy === "user";
-    card.remove();
+
     updateCounters({ sourceOfChange: wasPrimary ? "user" : "suggestion" });
     updateTokenCounter();
     saveState();
@@ -509,26 +564,118 @@ function attachEventListeners(card, snippet, isMain, container) {
 
   noteInput.addEventListener("input", debouncedSaveState);
 
-  if (!isMain) {
-    const moveUpButton = card.querySelector(".move-up");
-    const moveDownButton = card.querySelector(".move-down");
-
-    moveUpButton.addEventListener("click", () => {
-      const previousCard = card.previousElementSibling;
-      if (previousCard && !previousCard.classList.contains("empty-state")) {
-        container.insertBefore(card, previousCard);
-        saveState();
-      }
-    });
-
-    moveDownButton.addEventListener("click", () => {
-      const nextCard = card.nextElementSibling;
-      if (nextCard && !nextCard.classList.contains("empty-state")) {
-        container.insertBefore(nextCard, card);
-        saveState();
-      }
+  if (textContentInput) {
+    textContentInput.addEventListener("input", () => {
+      debouncedSaveState();
+      debouncedUpdateTokenCounter();
     });
   }
+
+  // Drag and drop event listeners
+  card.addEventListener("dragstart", handleDragStart);
+  card.addEventListener("dragend", handleDragEnd);
+  card.addEventListener("dragover", handleDragOver);
+  card.addEventListener("drop", handleDrop);
+  card.addEventListener("dragenter", handleDragEnter);
+  card.addEventListener("dragleave", handleDragLeave);
+}
+
+// Drag and Drop Handlers
+function handleDragStart(e) {
+
+  draggedElement = this;
+  this.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/html", this.innerHTML);
+}
+
+function handleDragEnd(e) {
+  this.classList.remove("dragging");
+
+  // Reset draggable to false after drag finishes
+  this.setAttribute("draggable", "false");
+
+  document.querySelectorAll(".snippet-card").forEach((card) => {
+    card.classList.remove("drop-target-top", "drop-target-bottom");
+  });
+
+  draggedElement = null;
+  saveState();
+}
+
+function handleDragOver(e) {
+  if (e.preventDefault) {
+    e.preventDefault();
+  }
+  e.dataTransfer.dropEffect = "move";
+
+  // Auto Scroll Logic
+  const mainContent = document.getElementById("main-scroll-container");
+  const containerRect = mainContent.getBoundingClientRect();
+
+  if (e.clientY < containerRect.top + SCROLL_ZONE_HEIGHT) {
+    mainContent.scrollTop -= SCROLL_SPEED;
+  } else if (e.clientY > containerRect.bottom - SCROLL_ZONE_HEIGHT) {
+    mainContent.scrollTop += SCROLL_SPEED;
+  }
+
+  // Divider Logic
+  if (this !== draggedElement) {
+    const rect = this.getBoundingClientRect();
+    const midpoint = rect.top + rect.height / 2;
+
+    this.classList.remove("drop-target-top", "drop-target-bottom");
+
+    if (e.clientY < midpoint) {
+      this.classList.add("drop-target-top");
+    } else {
+      this.classList.add("drop-target-bottom");
+    }
+  }
+
+  return false;
+}
+
+function handleDragEnter(e) {
+  // handled in dragOver usually for divider logic
+}
+
+function handleDragLeave(e) {
+  // Only remove class if we are leaving the card element, not entering a child
+  if (
+    e.relatedTarget &&
+    !this.contains(e.relatedTarget) &&
+    e.relatedTarget !== this
+  ) {
+    this.classList.remove("drop-target-top", "drop-target-bottom");
+  }
+}
+
+function handleDrop(e) {
+  if (e.stopPropagation) {
+    e.stopPropagation();
+  }
+
+  // Clean up classes
+  document
+    .querySelectorAll(".snippet-card")
+    .forEach((c) =>
+      c.classList.remove("drop-target-top", "drop-target-bottom")
+    );
+
+  if (draggedElement !== this) {
+    const rect = this.getBoundingClientRect();
+    const midpoint = rect.top + rect.height / 2;
+    const insertBefore = e.clientY < midpoint;
+
+    if (insertBefore) {
+      this.parentNode.insertBefore(draggedElement, this);
+    } else {
+      this.parentNode.insertBefore(draggedElement, this.nextSibling);
+    }
+  }
+
+  return false;
 }
 
 // Message Handling
@@ -536,7 +683,7 @@ window.addEventListener("message", (event) => {
   const message = event.data;
   switch (message.type) {
     case "add-snippet":
-      renderSnippetCard(message.payload, message.payload.destination);
+      renderSnippetCard(message.payload);
       updateCounters({ sourceOfChange: message.payload.addedBy });
       updateTokenCounter();
       saveState();
@@ -570,7 +717,6 @@ window.addEventListener("message", (event) => {
 
       if (isStateRestored && newDefault !== defaultPrompt) {
         defaultPrompt = newDefault;
-        // If user is not on a custom prompt, apply the new default setting live
         if (selectedPromptValue !== "custom") {
           applyPromptTemplate(newDefault);
           saveState();
@@ -630,16 +776,6 @@ promptSelectOptions.addEventListener("click", (event) => {
 
 customPromptInput.addEventListener("input", debouncedSaveState);
 
-const terminalLogDetails = document.getElementById("terminal-log-details");
-const terminalLogInput = document.getElementById("terminal-log-input");
-const externalInfoDetails = document.getElementById("external-info-details");
-const externalInfoInput = document.getElementById("external-info-input");
-
-terminalLogInput.addEventListener("input", debouncedSaveState);
-terminalLogDetails.addEventListener("toggle", saveState);
-externalInfoInput.addEventListener("input", debouncedSaveState);
-externalInfoDetails.addEventListener("toggle", saveState);
-
 // Finalizing & Exporting Logic
 const copyButton = document.getElementById("copy-to-clipboard-button");
 const exportDropdownButton = document.getElementById("export-dropdown-button");
@@ -654,12 +790,40 @@ addProjectTreeCheckbox.addEventListener("change", () => {
   saveState();
 });
 
-const quickAddFilesButton = document.getElementById("quick-add-files-button");
+// Icon Action Buttons (Header)
+const quickAddFilesButton = document.getElementById("quick-add-files-btn");
+const addExternalInfoButton = document.getElementById("add-external-info-btn");
+const addTerminalLogButton = document.getElementById("add-terminal-log-btn");
+
 quickAddFilesButton.addEventListener("click", () => {
   vscode.postMessage({
     type: "add-files",
     payload: { command: "snippetfuse.addFilesSnippet" },
   });
+});
+
+addTerminalLogButton.addEventListener("click", () => {
+  renderSnippetCard({
+    type: "terminal",
+    fileName: "Terminal Log",
+    text: "",
+    addedBy: "user",
+  });
+  updateCounters({ sourceOfChange: "user" });
+  updateTokenCounter();
+  saveState();
+});
+
+addExternalInfoButton.addEventListener("click", () => {
+  renderSnippetCard({
+    type: "external",
+    fileName: "External Info",
+    text: "",
+    addedBy: "user",
+  });
+  updateCounters({ sourceOfChange: "user" });
+  updateTokenCounter();
+  saveState();
 });
 
 exportDropdownButton.addEventListener("click", (e) => {
@@ -674,12 +838,21 @@ document.addEventListener("click", () => {
 function getFullContext() {
   const snippets = [];
   document.querySelectorAll(".snippet-card").forEach((card) => {
-    const fileInfo =
-      card.dataset.fileInfo || card.querySelector(".file-info")?.title.trim();
-    const code = card.querySelector(".code-preview").textContent;
-    const noteInput = card.querySelector(".note-input");
-    const note = noteInput ? noteInput.value || "" : "";
-    snippets.push({ fileInfo, code, note });
+    const data = extractSnippetData(card);
+
+    let codeOrText = "";
+    if (data.type === "code") {
+      codeOrText = data.text; // extracted from preview
+    } else {
+      codeOrText = data.text; // extracted from textarea
+    }
+
+    snippets.push({
+      fileInfo: data.fileName,
+      code: codeOrText,
+      note: data.note,
+      type: data.type,
+    });
   });
 
   const promptText =
@@ -687,19 +860,12 @@ function getFullContext() {
       ? customPromptInput.value
       : promptTemplates[selectedPromptValue] || "";
 
-  const terminalLog = {
-    include:
-      terminalLogInput.value.trim().length > 0 &&
-      terminalLogDetails.hasAttribute("open"),
-    text: terminalLogInput.value.trim(),
-  };
-  const externalInfo = {
-    include:
-      externalInfoInput.value.trim().length > 0 &&
-      externalInfoDetails.hasAttribute("open"),
-    text: externalInfoInput.value.trim(),
-  };
   const includeProjectTree = addProjectTreeCheckbox.checked;
+
+  // Legacy Support (Extension expects terminal/external separated, but now they are in snippets array)
+  // We send empty objects for legacy handlers to avoid errors, but content is in snippets now.
+  const terminalLog = { include: false, text: "" };
+  const externalInfo = { include: false, text: "" };
 
   return {
     promptText,
@@ -740,26 +906,15 @@ exportDropdownContent.addEventListener("click", (event) => {
 
 // Reset Logic
 const resetButton = document.querySelector(".reset-button");
-const mainSnippetContainer = document.querySelector(".main-snippet-container");
-const contextSnippetContainer = document.querySelector(
-  ".context-snippets-container"
-);
 
 resetButton.addEventListener("click", () => {
-  mainSnippetContainer.innerHTML = "";
-  contextSnippetContainer.innerHTML = "";
+  const container = getContainer();
+  container.innerHTML = "";
 
   customPromptInput.value = "";
   applyPromptTemplate(defaultPrompt);
 
   addProjectTreeCheckbox.checked = false;
-
-  terminalLogInput.value = "";
-  terminalLogDetails.removeAttribute("open");
-
-  externalInfoInput.value = "";
-  externalInfoDetails.removeAttribute("open");
-
   smartSuggestionsDetails.removeAttribute("open");
 
   updateCounters({ sourceOfChange: "user" });
@@ -781,8 +936,6 @@ function updateTokenCounter() {
   const allText =
     fullContext.promptText +
     fullContext.snippets.map((s) => s.fileInfo + s.code + s.note).join(" ") +
-    (fullContext.terminalLog.include ? fullContext.terminalLog.text : "") +
-    (fullContext.externalInfo.include ? fullContext.externalInfo.text : "") +
     (fullContext.includeProjectTree ? "project tree placeholder" : "");
 
   const totalTokens = countTokens(allText);
@@ -811,11 +964,8 @@ function updateTokenCounter() {
 
 function subscribeToContentChanges() {
   const containers = [
-    document.querySelector(".main-snippet-container"),
-    document.querySelector(".context-snippets-container"),
+    getContainer(),
     document.getElementById("custom-prompt-input"),
-    document.getElementById("terminal-log-input"),
-    document.getElementById("external-info-input"),
     document.getElementById("add-project-tree-checkbox"),
   ];
 
@@ -834,9 +984,6 @@ function subscribeToContentChanges() {
       }
     }
   });
-
-  terminalLogDetails.addEventListener("toggle", updateTokenCounter);
-  externalInfoDetails.addEventListener("toggle", updateTokenCounter);
 }
 
 // Initialize
