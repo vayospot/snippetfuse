@@ -1,55 +1,74 @@
-# SnippetFuse - Context Packaging For AI
+# SnippetFuse - AI Context Builder
 
-SnippetFuse is a context packaging tool that helps package code snippets, terminal logs, and project structures from different files into a single context format for AI assistants like ChatGPT, Claude, and Gemini.
+SnippetFuse is a smart context packaging tool that helps you package code snippets, terminal logs, project structures, and other information into a single, context format for AI assistants like ChatGPT, Claude, and Gemini.
+
+It acts like a staging area for gathering and structuring context before sending it to any AI.
 
 ## Demo
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vayospot/snippetfuse/main/assets/snippetfuse-demo.gif" alt="SnippetFuse Demo" />
+  <br/>
+  <em><strong>Note:</strong> The UI has been updated since this demo was recorded.</em>
 </p>
 
 ## Features
 
-- **Quick Snippet Capture**: Easily capture code from your active editor. Use a simple command to add selected code to the AI context.
-- **Smart Snippet Management**: Organize your snippets with a clear distinction between the "Main Issue" and "Context" to guide the AI's focus.
-- **Git Integration for Commit Messages**: Automatically generate AI context based on staged Git changes to draft descriptive commit messages.
-- A sidebar panel for managing snippets.
-- Choice to include a project tree to give the AI a complete overview of your codebase's structure.
-- Terminal Log Capture: Add relevant terminal output to provide a full picture of the problem.
-- Customizable Output: Simply copy it to your clipboard for instant pasting or export it as a Markdown file or a text file
+- **Unified Context View**: A single, intuitive list for all your context. Drag and drop to reorder, and use the Star icon (★) to highlight your "Main Issue".
+- **Intelligent Suggestions**: Snippetfuse engine automatically analyzes your added snippets and suggests relevant files to add to the context with one click.
+- **Multiple Context Types**: Add not just code, but also Terminal Logs and External Info (like documentation or web solutions) as context snippets.
+- **Full Customization**: Define your own default prompts (Bug Report, Code Review, etc.) in VS Code settings.
+- **Git Integration**: Automatically generate AI context based on your staged Git changes to draft commit messages easily.
+- **Project Structure**: Include an ASCII-style tree of your codebase (respecting `.gitignore`) to give the AI architectural context.
+- **Flexible Export**: Copy the complete, formatted context to your clipboard, or export it as a Markdown or text file.
 
 ## How to Use
 
-### 1\. Open the SnippetFuse View
+### 1. Open the SnippetFuse View
 
-Open the SnippetFuse view by clicking on the extension icon in the Activity Bar on the side of VS Code.
+Click the SnippetFuse icon in the SideBar to open the main panel.
 
-### 2\. Capture Code Snippets
+### 2. Add Your Context
 
-- **Add to AI Context**: Select a code block in your editor, right-click, and choose **Add Snippet**. If it's your first snippet, it will be added as the "Main Issue." Subsequent snippets will be added as "Context."
-- **Set as Main Issue**: To explicitly set a snippet as the primary focus, select the code, right-click and choose **Set Main Issue**.
-- **Add to Context Field**: To add a supporting snippet, select the code, right-click and choose **Append to Context Field**.
+- **Add Snippet**: Select a code block,and press `Alt+C` (or right-click, and choose Add Snippet (SnippetFuse)). This adds it as a regular context card. You can promote any card to the Main Issue by clicking its hollow star (☆).
+- **Set Main Issue**: Select a code block, and press `Alt+M` (or right-click, and choose Set Main Issue (SnippetFuse)). This marks it as the primary focus.
+- **Add Terminal Logs or External Info**: Use the Terminal (❯\_) or Globe (🌐) icons at the top of the context list to add special text cards for logs or documentation.
 
-### 3\. Add More Context
+### 3. Organize & Refine
 
-- **Git Commit Context**: In the Source Control panel, click the SnippetFuse icon to generate a full context report of your staged changes, ready to be used for an AI-generated commit message.
-- **Terminal Log**: Expand the "Terminal Log" section and paste any relevant terminal output.
-- **Add Files from Project**: Click to select and import multiple files from your project simultaneously via a file picker as context.
-- **Project Tree**: Check the "Add Project Tree" box to automatically generate and include a summary of your project's file structure. It respects your **`.gitignore`** file for faster scanning.
+- **Drag & Drop**: Grab the handle on the left of any card to reorder snippets. The order in the list is the order the AI will read them.
+- **Add Terminal Logs or External Info**: Use the Terminal (❯\_) or Globe (🌐) icons at the top of the context list to add special text cards for logs or documentation.
 
-### 4\. Export Your Context
+### 4. Enhance with Additional Context
 
-- **Copy to Clipboard**: Click the copy icon to copy the entire formatted context to your clipboard.
-- **Export to File**: Use the dropdown menu to export your context as a `.md` or `.txt` file directly into your workspace.
+- **Smart Suggestions**: After adding at least two code snippets, expand the "Smart Suggestions" section to see file recommendations.
+- **Add Files from Project**: Use the Files (📄) icon to open a quick-pick menu and add multiple full files from your project at once.
+- **Include Project Tree**: Check the "Include Project Tree" box to automatically generate and include a `.gitignore`-aware summary of your project's structure.
+- **Request Full Code**: Check "Request full code from AI" to append instructions preventing the AI from returning lazy summaries (e.g., `// ... rest of code`).
+
+### 5. Export
+
+- **Copy to Clipboard**: The primary button copies the entire formatted context to your clipboard.
+- **Export to File**: The dropdown menu lets you save the context as a `.md` or `.txt` file.
+
+## Configuration
+
+You can customize Snippetfuse in your editor's settings (`Ctrl+,` → search "SnippetFuse"):
+
+- `snippetfuse.prompts.default`: The default template selected when opening the panel (e.g., "bug-report").
+- `snippetfuse.prompts.bugReport`: Edit the text template for Bug Reports.
+- `snippetfuse.prompts.codeReview`: Edit the text template for Code Reviews.
+- `snippetfuse.prompts.gitCommit`: Edit the prompt template for generating Git commit messages.
+- `snippetfuse.prompts.requestFullCodePrompt`: Edit the instruction appended when "Request full code" is checked.
 
 ## Contributing
 
-SnippetFuse is an open-source project. Contributions, issues, and feature requests are welcome\!
+SnippetFuse is open-source. Contributions, issues, and feature requests are welcome!
 
-- **Source Code**: [https://github.com/vayospot/snippetfuse](https://www.google.com/search?q=https://github.com/vayospot/snippetfuse)
-- **Issues**: [https://github.com/vayospot/snippetfuse/issues](https://www.google.com/search?q=https://github.com/vayospot/snippetfuse/issues)
+- **Source Code**: [https://github.com/vayospot/snippetfuse](https://github.com/vayospot/snippetfuse)
+- **Issues**: [https://github.com/vayospot/snippetfuse/issues](https://github.com/vayospot/snippetfuse/issues)
 - **Twitter**: [@vayospot](https://x.com/vayospot)
 
 ## License
 
-This project is licensed under the MIT License.
+MIT

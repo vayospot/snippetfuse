@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.4.0] - 2024-05-22
+
+### Added
+
+- **Smart Suggestions Engine**: A powerful suggestion engine that uses a "Frequency Score + Hub Score" algorithm to rank and suggest context files.
+- **Full Prompt Customization**: All prompt templates (Bug Report, Feature Request, Code Review, Git Commit) are now editable in `settings.json`.
+- **"Request Full Code" Feature**: A new checkbox that appends a configurable instruction to the prompt, asking the AI for complete code files instead of diffs.
+- **Non-Code Cards**: Added dedicated UI buttons for creating "Terminal Log" and "External Info" text cards.
+- **Drag-and-Drop Reordering**: All context cards in the panel can now be reordered via drag-and-drop.
+
+### Changed
+
+- **UI Redesign**: Complete redesign of the sidepanel to match modern VS Code native styling (colors, buttons, input fields).
+- **Navigation**: "Add Files" and "Terminal" options moved to icon buttons in the section header for cleaner access.
+- **Unified Context UI**: Merged the "Main Issue" and "Context" sections into a single, unified list. The main issue is now designated with a star icon (★) and can be toggled on any card.
+- **Import Resolution**: Improved logic for resolving file paths, now supporting better handling of local imports vs. node_modules.
+
+### Removed
+
+- **`Add to Context Field` Command**: Removed the redundant `snippetfuse.addContextSnippet` command and its associated keybinding to simplify the workflow.
+- **Separate "Main Issue" and "Context" Sections**: The UI no longer has two distinct lists, opting for the unified view.
+
+---
+
 ## [0.3.0] - 2025-10-26
 
 ### Added
