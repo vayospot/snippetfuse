@@ -309,8 +309,22 @@ function updateCounters(options = {}) {
 
 function renderSnippetCard(snippet) {
   const container = getContainer();
-  // Note: Logic changed, existing cards don't force "Main" status unless user sets it.
   const isMain = snippet.isMain || false;
+
+  // If this new card is the main one, ensure no other card is.
+  if (isMain) {
+    const currentMain = container.querySelector(".snippet-card.main-snippet");
+    if (currentMain) {
+      currentMain.classList.remove("main-snippet");
+      const oldStar = currentMain.querySelector(".star-indicator");
+      if (oldStar) {
+        oldStar.classList.remove("filled");
+        oldStar.classList.add("hollow");
+        oldStar.textContent = "☆";
+        oldStar.title = "Set as Main Snippet";
+      }
+    }
+  }
 
   const card = createSnippetCardElement(snippet, isMain);
 
