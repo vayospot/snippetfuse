@@ -172,10 +172,16 @@ function restoreState() {
     });
   }
 
-  if (state.selectedPromptValue === "custom" && state.customPromptValue) {
-    customPromptInput.value = state.customPromptValue;
+  // Restore the selected prompt template from saved state
+  if (state.selectedPromptValue === "custom") {
+    customPromptInput.value = state.customPromptValue || "";
     applyPromptTemplate("custom");
+  } else if (state.selectedPromptValue) {
+    // Restore the saved prompt selection (bug-report, feature-request, code-review)
+    applyPromptTemplate(state.selectedPromptValue);
+    customPromptInput.value = "";
   } else {
+    // Fall back to default if no saved selection
     applyPromptTemplate(defaultPrompt);
     customPromptInput.value = "";
   }
@@ -910,10 +916,11 @@ copyButton.addEventListener("click", () => {
 });
 
 exportDropdownContent.addEventListener("click", (event) => {
-  if (event.target.tagName === "A") {
+  const anchor = event.target.closest("a");
+  if (anchor) {
     event.preventDefault();
     event.stopPropagation();
-    const format = event.target.dataset.format;
+    const format = anchor.dataset.format;
     const context = getFullContext();
     vscode.postMessage({
       type: "export-content",

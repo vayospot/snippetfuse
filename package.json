@@ -170,7 +170,8 @@
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.40",
-    "ignore": "^7.0.5"
+    "ignore": "^7.0.5",
+    "jspdf": "^4.2.0"
   },
   "bugs": {
     "url": "https://github.com/vayospot/snippetfuse/issues",

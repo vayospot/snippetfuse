@@ -3,6 +3,7 @@ const { getWebviewContent } = require("../utils/getWebviewContent");
 const { generateProjectTree } = require("../utils/projectTree");
 const { setWebview, resetMain } = require("../commands/addSnippet");
 const path = require("path");
+const { jsPDF } = require("jspdf");
 
 function createSnippetViewProvider(context) {
   return {
@@ -123,8 +124,13 @@ function createSnippetViewProvider(context) {
           }
 
           case "export-content": {
-            const { promptText, snippets, includeProjectTree, format } =
+            const { promptText, snippets, includeProjectTree, format, requestFullCode } =
               message.payload;
+            
+            // Get the "Request full code" prompt from settings
+            const config = vscode.workspace.getConfiguration("snippetfuse.prompts");
+            const requestFullCodePrompt = config.get("requestFullCodePrompt");
+            
             let outputContent = `${promptText}\n---\n`;
 
             snippets.forEach((snippet) => {
@@ -153,6 +159,11 @@ function createSnippetViewProvider(context) {
               outputContent += "```\n";
             }
 
+            // Add "Request full code" prompt if checkbox is checked
+            if (requestFullCode && requestFullCodePrompt) {
+              outputContent += `\n\n${requestFullCodePrompt}\n`;
+            }
+
             if (format === "copy") {
               await vscode.env.clipboard.writeText(outputContent);
               vscode.window.showInformationMessage(
@@ -172,6 +183,135 @@ function createSnippetViewProvider(context) {
                 await vscode.workspace.fs.writeFile(
                   fileUri,
                   Buffer.from(outputContent)
+                );
+                vscode.window.showInformationMessage(
+                  `AI Context exported to ${path.basename(fileUri.fsPath)}.`
+                );
+              }
+            } else if (format === "pdf") {
+              // Generate PDF
+              const doc = new jsPDF({
+                compress: true,
+              });
+              
+              const pageWidth = doc.internal.pageSize.getWidth();
+              const pageHeight = doc.internal.pageSize.getHeight();
+              const margin = 12;
+              const maxWidth = pageWidth - (margin * 2);
+              let yPos = margin;
+              
+              // Helper to check and add new page if needed
+              const checkPageBreak = (lineCount = 1) => {
+                const lineHeight = 4;
+                const neededHeight = lineCount * lineHeight;
+                if (yPos + neededHeight > pageHeight - margin) {
+                  doc.addPage();
+                  yPos = margin;
+                  return true;
+                }
+                return false;
+              };
+
+              // Helper function to add text with proper wrapping
+              const addText = (text, fontSize = 11, isBold = false, isCode = false) => {
+                doc.setFontSize(fontSize);
+                doc.setFont(isCode ? "courier" : "helvetica", isBold ? "bold" : "normal");
+                
+                // Get wrapped lines
+                const lines = doc.splitTextToSize(text, maxWidth);
+                const lineCount = lines.length;
+                const lineHeight = fontSize * 0.45;
+                
+                // Check if we need a new page BEFORE writing
+                checkPageBreak(lineCount);
+                
+                for (let i = 0; i < lines.length; i++) {
+                  // Check page break before each line
+                  if (yPos > pageHeight - margin - lineHeight) {
+                    doc.addPage();
+                    yPos = margin;
+                  }
+                  doc.text(lines[i], margin, yPos);
+                  yPos += lineHeight;
+                }
+              };
+
+              // Add prompt text
+              addText(promptText, 12, true);
+              yPos += 2;
+              doc.setDrawColor(150);
+              doc.line(margin, yPos, pageWidth - margin, yPos);
+              yPos += 6;
+
+              // Add snippets
+              for (const snippet of snippets) {
+                // Check page break before snippet
+                checkPageBreak(5);
+
+                // Add file info header
+                const header = snippet.type === "code" 
+                  ? snippet.fileInfo 
+                  : (snippet.type === "terminal" ? "Terminal Log" : "External Information");
+                addText(header, 11, true);
+                yPos += 1;
+
+                // Add code/text content - process line by line for better control
+                const codeLines = snippet.code.split('\n');
+                for (const codeLine of codeLines) {
+                  addText(codeLine, 9, false, true);
+                }
+                yPos += 2;
+
+                // Add note if exists
+                if (snippet.note) {
+                  addText(`Note: ${snippet.note}`, 9, false, false);
+                  yPos += 2;
+                }
+
+                // Separator
+                doc.setDrawColor(200);
+                doc.line(margin, yPos, pageWidth - margin, yPos);
+                yPos += 6;
+              }
+
+              // Add project tree if enabled
+              if (includeProjectTree) {
+                const rootPath = vscode.workspace.workspaceFolders[0].uri;
+                let projectTree = await generateProjectTree(rootPath);
+                
+                // Replace Unicode box-drawing characters with ASCII equivalents
+                projectTree = projectTree
+                  .replace(/│/g, "|")
+                  .replace(/├──/g, "|--")
+                  .replace(/└──/g, "--")
+                  .replace(/──/g, "--");
+                
+                checkPageBreak(10);
+                addText("Project Tree", 11, true);
+                yPos += 1;
+                
+                // Process tree line by line
+                const treeLines = projectTree.split('\n');
+                for (const treeLine of treeLines) {
+                  addText(treeLine, 8, false, true);
+                }
+              }
+
+              // Save PDF
+              const defaultUri = vscode.Uri.file(
+                path.join(
+                  vscode.workspace.workspaceFolders[0].uri.fsPath,
+                  "snippetfuse-context.pdf"
+                )
+              );
+              const fileUri = await vscode.window.showSaveDialog({
+                defaultUri,
+              });
+              if (fileUri) {
+                const pdfBuffer = doc.output("arraybuffer");
+                await vscode.workspace.fs.writeFile(
+                  fileUri,
+                  Buffer.from(pdfBuffer)
                 );
                 vscode.window.showInformationMessage(
                   `AI Context exported to ${path.basename(fileUri.fsPath)}.`
