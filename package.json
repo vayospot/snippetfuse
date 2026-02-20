@@ -16,7 +16,7 @@
     "Debuggers",
     "Other"
   ],
-  "main": "./src/extension.js",
+  "main": "./dist/extension.js",
   "activationEvents": [],
   "contributes": {
     "commands": [
@@ -156,17 +156,22 @@
     }
   },
   "scripts": {
+    "build": "tsc",
     "lint": "eslint .",
     "pretest": "npm run lint",
     "test": "vscode-test"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
+    "@types/node": "^22.19.11",
     "@types/vscode": "^1.104.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.0",
+    "@typescript-eslint/parser": "^8.56.0",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.34.0"
+    "eslint": "^9.34.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.0"
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.40",

@@ -1,11 +1,13 @@
 const vscode = acquireVsCodeApi();
 
+// UI Constants
 const TRUNCATION_HEIGHT = 200;
 const DEBOUNCE_SAVE_DELAY = 500;
 const DEBOUNCE_TOKEN_DELAY = 300;
 const SCROLL_ZONE_HEIGHT = 60;
 const SCROLL_SPEED = 10;
 
+// Model token limits for estimation
 const MODEL_LIMITS = {
   ChatGPT: 128000,
   Claude: 100000,
@@ -13,12 +15,28 @@ const MODEL_LIMITS = {
   Gemini: 52760,
 };
 
-let promptTemplates = {};
-let requestFullCodePrompt = "";
-let defaultPrompt = "bug-report";
-let isStateRestored = false;
-let draggedElement = null;
+// Application state
+const state = {
+  promptTemplates: {},
+  requestFullCodePrompt: "",
+  defaultPrompt: "bug-report",
+  isStateRestored: false,
+  draggedElement: null,
+};
 
+// Legacy variable aliases for backward compatibility
+let promptTemplates = state.promptTemplates;
+let requestFullCodePrompt = state.requestFullCodePrompt;
+let defaultPrompt = state.defaultPrompt;
+let isStateRestored = state.isStateRestored;
+let draggedElement = state.draggedElement;
+
+/**
+ * Creates a debounced version of a function
+ * @param {Function} func - Function to debounce
+ * @param {number} delay - Delay in milliseconds
+ * @returns {Function} Debounced function
+ */
 function debounce(func, delay) {
   let timeoutId;
   return function (...args) {
@@ -30,7 +48,7 @@ function debounce(func, delay) {
 const debouncedSaveState = debounce(saveState, DEBOUNCE_SAVE_DELAY);
 const debouncedUpdateTokenCounter = debounce(
   updateTokenCounter,
-  DEBOUNCE_TOKEN_DELAY
+  DEBOUNCE_TOKEN_DELAY,
 );
 
 function createEmptyState() {
@@ -154,7 +172,7 @@ function restoreState() {
     state.snippets.forEach((snippet) => {
       renderSnippetCard(snippet);
       const cards = document.querySelectorAll(
-        ".unified-context-container .snippet-card"
+        ".unified-context-container .snippet-card",
       );
       const lastCard = cards[cards.length - 1];
 
@@ -202,16 +220,16 @@ function restoreState() {
 
 // Smart Suggestions Logic
 const smartSuggestionsDetails = document.getElementById(
-  "smart-suggestions-details"
+  "smart-suggestions-details",
 );
 const smartSuggestionsLoading = document.getElementById(
-  "smart-suggestions-loading"
+  "smart-suggestions-loading",
 );
 const smartSuggestionsPills = document.getElementById(
-  "smart-suggestions-pills"
+  "smart-suggestions-pills",
 );
 const smartSuggestionsEmpty = document.getElementById(
-  "smart-suggestions-empty"
+  "smart-suggestions-empty",
 );
 
 function getActiveSnippetsForSuggestionAnalysis() {
@@ -266,8 +284,9 @@ smartSuggestionsDetails.addEventListener("toggle", () => {
 });
 
 smartSuggestionsPills.addEventListener("click", (e) => {
-  if (e.target.classList.contains("suggestion-pill")) {
-    const filePath = e.target.dataset.filePath;
+  const target = e.target;
+  if (target.classList.contains("suggestion-pill")) {
+    const filePath = target.dataset.filePath;
     vscode.postMessage({
       type: "add-full-files-from-suggestions",
       payload: {
@@ -275,7 +294,7 @@ smartSuggestionsPills.addEventListener("click", (e) => {
       },
     });
 
-    e.target.remove();
+    target.remove();
     if (smartSuggestionsPills.children.length === 0) {
       smartSuggestionsEmpty.classList.remove("hidden");
     }
@@ -396,8 +415,8 @@ function createSnippetCardElement(snippet, isMain) {
     <div class="card-header">
       <span class="drag-handle codicon codicon-gripper" title="Drag to reorder"></span>
       <span class="star-indicator ${isMain ? "filled" : "hollow"}" title="${
-    isMain ? "Unset Main" : "Set as Main Snippet"
-  }">
+        isMain ? "Unset Main" : "Set as Main Snippet"
+      }">
         ${isMain ? "★" : "☆"}
       </span>
       <div class="file-info" title="${tooltipTitle}">
@@ -682,7 +701,7 @@ function handleDrop(e) {
   document
     .querySelectorAll(".snippet-card")
     .forEach((c) =>
-      c.classList.remove("drop-target-top", "drop-target-bottom")
+      c.classList.remove("drop-target-top", "drop-target-bottom"),
     );
 
   if (draggedElement !== this) {
@@ -738,18 +757,16 @@ window.addEventListener("message", (event) => {
       requestFullCodePrompt = message.payload.requestFullCodePrompt;
       const newDefault = message.payload.default;
 
-      if (isStateRestored && newDefault !== defaultPrompt) {
+      // Handle settings arriving after state is already restored
+      if (!isStateRestored) {
         defaultPrompt = newDefault;
-        if (selectedPromptValue !== "custom") {
-          applyPromptTemplate(newDefault);
-          saveState();
-        }
+        restoreState();
       } else {
         defaultPrompt = newDefault;
-        if (!isStateRestored) {
-          restoreState();
-        }
       }
+
+      // Update token counter now that we actually have the template text
+      updateTokenCounter();
       break;
   }
 });
@@ -803,13 +820,13 @@ customPromptInput.addEventListener("input", debouncedSaveState);
 const copyButton = document.getElementById("copy-to-clipboard-button");
 const exportDropdownButton = document.getElementById("export-dropdown-button");
 const exportDropdownContent = document.getElementById(
-  "export-dropdown-content"
+  "export-dropdown-content",
 );
 const addProjectTreeCheckbox = document.getElementById(
-  "add-project-tree-checkbox"
+  "add-project-tree-checkbox",
 );
 const requestFullCodeCheckbox = document.getElementById(
-  "request-full-code-checkbox"
+  "request-full-code-checkbox",
 );
 
 addProjectTreeCheckbox.addEventListener("change", () => {
@@ -1020,3 +1037,6 @@ function subscribeToContentChanges() {
 // Initialize
 subscribeToContentChanges();
 restoreState();
+
+// Notify the extension that the webview is ready to receive settings
+vscode.postMessage({ type: "webview-ready" });

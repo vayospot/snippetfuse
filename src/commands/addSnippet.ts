@@ -1,28 +1,53 @@
-const vscode = require("vscode");
-const path = require("path");
+import * as vscode from "vscode";
+import * as path from "path";
+import { SnippetPayload, ImportPathData, AddSnippetOptions } from "../types";
+import { MAX_SUGGESTIONS } from "../utils/constants";
 
-let webviewView;
-const MAX_SUGGESTIONS = 4;
+// Global webview reference (set by the webview provider)
+let webviewView: vscode.WebviewView | undefined;
 
-function setWebview(view) {
+// Types
+
+interface SnippetData {
+  type: "add-snippet";
+  payload: SnippetPayload;
+}
+
+export type { SnippetPayload };
+
+// Webview Management
+
+/**
+ * Sets the webview reference from the provider.
+ */
+function setWebview(view: vscode.WebviewView): void {
   webviewView = view;
 }
 
-// Deprecated...
-function resetMain() {
-  // ...but kept for safety in case other parts of the extension call it.
+/**
+ * Resets the main snippet indicator.
+ * Notifies the webview that no snippet is the main one anymore.
+ */
+function resetMain(): void {
+  if (webviewView) {
+    webviewView.webview.postMessage({
+      type: "main-snippet-removed",
+    });
+  }
 }
+
+// Import Path Extraction
 
 /**
  * Extracts all import paths from code.
  * Returns an array of objects: { path: string, index: number }
  * The index is the starting position of the path string in the code.
  */
-function extractImportPaths(code) {
-  const importPaths = new Map(); // Use Map to auto-deduplicate by path string
+function extractImportPaths(code: string): ImportPathData[] {
+  const importPaths = new Map<string, ImportPathData>();
 
   // Match various import patterns
-  const patterns = [
+  const patterns: RegExp[] = [
     // ES6 imports: import X from "path" or import "path"
     /import\s+(?:[\w*{}\s,]+\s+from\s+)?['"]([^'"]+)['"]/g,
     // require: require("path") or require('path')
@@ -37,7 +62,7 @@ function extractImportPaths(code) {
   ];
 
   patterns.forEach((pattern) => {
-    let match;
+    let match: RegExpExecArray | null;
     while ((match = pattern.exec(code)) !== null) {
       const importPath = match[1];
       // Get the index of the path string itself within the full match
@@ -52,10 +77,13 @@ function extractImportPaths(code) {
   return Array.from(importPaths.values());
 }
 
-function isProjectSpecificImport(importPath) {
+/**
+ * Checks if an import path is project-specific (not a library/builtin).
+ */
+function isProjectSpecificImport(importPath: string): boolean {
   // Keep relative paths: ./ ../
   if (importPath.startsWith(".") || importPath.startsWith("/")) return true;
-  // Keep common alias patterns: @/ ~/ $/ #/
+  // Keep common alias patterns: @/ ~/ $/
   if (/^[@~$#]\//.test(importPath)) return true;
   // This is a basic check. For Python `from . import X` becomes `.` which we want to ignore.
   if (importPath === ".") return false;
@@ -65,40 +93,44 @@ function isProjectSpecificImport(importPath) {
   return false;
 }
 
+// Import Resolution
+
 /**
  * Resolves an import path to an actual file using VS Code's definition provider.
- * Now uses a precise index for reliability.
  */
 async function resolveImportToFile(
-  importPath,
-  importStartIndex,
-  sourceFilePath,
-  workspaceRoot
-) {
+  importPath: string,
+  importStartIndex: number,
+  sourceFilePath: string,
+  workspaceRoot: vscode.Uri,
+): Promise<string | null> {
   try {
     const sourceFileUri = vscode.Uri.file(
-      path.join(workspaceRoot.fsPath, sourceFilePath)
+      path.join(workspaceRoot.fsPath, sourceFilePath),
     );
 
-    let document;
+    let document: vscode.TextDocument;
     try {
       document = await vscode.workspace.openTextDocument(sourceFileUri);
-    } catch (err) {
+    } catch {
       console.warn(`Could not open source file: ${sourceFilePath}`);
       return null;
     }
 
-    // Use the precise index to get the position, avoiding faulty string searches
+    // Use the precise index to get the position
     const position = document.positionAt(importStartIndex);
-    const definitions = await vscode.commands.executeCommand(
-      "vscode.executeDefinitionProvider",
-      document.uri,
-      position
-    );
+    const definitions = await vscode.commands.executeCommand<
+      vscode.Location[] | vscode.LocationLink[]
+    >("vscode.executeDefinitionProvider", document.uri, position);
 
-    if (definitions && definitions.length > 0) {
+    if (definitions?.length) {
       // Handle both Location and LocationLink[] return types
-      const targetUri = definitions[0].targetUri || definitions[0].uri;
+      const targetUri =
+        "targetUri" in definitions[0]
+          ? definitions[0].targetUri
+          : "uri" in definitions[0]
+            ? definitions[0].uri
+            : null;
       if (targetUri) {
         return targetUri.fsPath;
       }
@@ -108,7 +140,7 @@ async function resolveImportToFile(
   } catch (err) {
     console.error(
       `Failed to resolve import "${importPath}" via DefinitionProvider:`,
-      err
+      err,
     );
     return null;
   }
@@ -116,11 +148,14 @@ async function resolveImportToFile(
 
 /**
  * Fallback: Manual resolution when VS Code's definition provider fails.
- * Handles common patterns like tsconfig paths and relative imports.
  */
-async function manualResolveImport(importPath, sourceFilePath, workspaceRoot) {
+async function manualResolveImport(
+  importPath: string,
+  sourceFilePath: string,
+  workspaceRoot: vscode.Uri,
+): Promise<string | null> {
   try {
-    let resolvedPath = null;
+    let resolvedPath: string | null = null;
 
     // Handle relative imports
     if (importPath.startsWith(".")) {
@@ -150,7 +185,7 @@ async function manualResolveImport(importPath, sourceFilePath, workspaceRoot) {
     }
     // Other patterns - might be tsconfig paths
     else {
-      resolvedPath = importPath.replace(/\./g, "/"); // For python/java paths
+      resolvedPath = importPath.replace(/\./g, "/");
     }
 
     if (resolvedPath) {
@@ -158,21 +193,23 @@ async function manualResolveImport(importPath, sourceFilePath, workspaceRoot) {
     }
 
     return null;
-  } catch (err) {
+  } catch {
     return null;
   }
 }
 
 /**
  * Tries to find a file with common extensions (.js, .jsx, .ts, .tsx, etc.)
- * Also handles index.js patterns.
  */
-async function findFileWithExtensions(relativePath, workspaceRoot) {
-  // First, check if the path as-is resolves. This handles paths that already include an extension.
+async function findFileWithExtensions(
+  relativePath: string,
+  workspaceRoot: vscode.Uri,
+): Promise<string | null> {
+  // First, check if the path as-is resolves
   const filesAsIs = await vscode.workspace.findFiles(
     relativePath,
     "**/node_modules/**",
-    1
+    1,
   );
   if (filesAsIs.length > 0) {
     return path
@@ -180,7 +217,7 @@ async function findFileWithExtensions(relativePath, workspaceRoot) {
       .replace(/\\/g, "/");
   }
 
-  // If not, proceed assuming the path is extension-less (for suggestions).
+  // If not, proceed assuming the path is extension-less
   const extensions = [
     ".js",
     ".jsx",
@@ -206,7 +243,7 @@ async function findFileWithExtensions(relativePath, workspaceRoot) {
     const files = await vscode.workspace.findFiles(
       pattern,
       "**/node_modules/**",
-      1
+      1,
     );
     if (files.length > 0) {
       return path
@@ -221,7 +258,7 @@ async function findFileWithExtensions(relativePath, workspaceRoot) {
     const files = await vscode.workspace.findFiles(
       pattern,
       "**/node_modules/**",
-      1
+      1,
     );
     if (files.length > 0) {
       return path
@@ -235,7 +272,7 @@ async function findFileWithExtensions(relativePath, workspaceRoot) {
   const pyInitFiles = await vscode.workspace.findFiles(
     pyInitPattern,
     "**/node_modules/**",
-    1
+    1,
   );
   if (pyInitFiles.length > 0) {
     return path
@@ -246,27 +283,32 @@ async function findFileWithExtensions(relativePath, workspaceRoot) {
   return null;
 }
 
+// Smart Suggestions
+
 /**
  * Main function: analyzes code snippet and returns resolved file paths.
  */
-async function getSuggestionsFromCode(code, currentFilePath) {
+async function getSuggestionsFromCode(
+  code: string,
+  currentFilePath: string,
+): Promise<string[]> {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
   if (!workspaceRoot) return [];
 
   const importData = extractImportPaths(code);
   const projectImports = importData.filter((data) =>
-    isProjectSpecificImport(data.path)
+    isProjectSpecificImport(data.path),
   );
 
   if (projectImports.length === 0) return [];
 
-  const resolvedFiles = new Set();
+  const resolvedFiles = new Set<string>();
   for (const { path: importPath, index } of projectImports) {
     let resolved = await resolveImportToFile(
       importPath,
       index,
       currentFilePath,
-      workspaceRoot
+      workspaceRoot,
     );
 
     if (resolved) {
@@ -277,7 +319,7 @@ async function getSuggestionsFromCode(code, currentFilePath) {
       resolved = await manualResolveImport(
         importPath,
         currentFilePath,
-        workspaceRoot
+        workspaceRoot,
       );
     }
 
@@ -292,13 +334,15 @@ async function getSuggestionsFromCode(code, currentFilePath) {
 
 /**
  * Calculates the "Hub Score" for a given file by counting its local imports.
- * This is a lightweight, non-recursive scan.
  */
-async function getHubScore(filePath, workspaceRoot) {
+async function getHubScore(
+  filePath: string,
+  workspaceRoot: vscode.WorkspaceFolder,
+): Promise<number> {
   try {
     const resolvedPathWithExt = await findFileWithExtensions(
       filePath,
-      workspaceRoot.uri
+      workspaceRoot.uri,
     );
     if (!resolvedPathWithExt) return 0;
 
@@ -308,12 +352,15 @@ async function getHubScore(filePath, workspaceRoot) {
 
     const importData = extractImportPaths(text);
     const projectImportsCount = importData.filter((data) =>
-      isProjectSpecificImport(data.path)
+      isProjectSpecificImport(data.path),
     ).length;
 
     return projectImportsCount;
   } catch (err) {
-    console.warn(`Could not calculate hub score for ${filePath}:`, err.message);
+    console.warn(
+      `Could not calculate hub score for ${filePath}:`,
+      err instanceof Error ? err.message : err,
+    );
     return 0;
   }
 }
@@ -321,13 +368,15 @@ async function getHubScore(filePath, workspaceRoot) {
 /**
  * Agnostic Ranking Engine: Gets top suggestions from all snippets.
  */
-async function getSuggestionsFromActiveSnippets(allSnippets) {
+async function getSuggestionsFromActiveSnippets(
+  allSnippets: SnippetPayload[],
+): Promise<void> {
   try {
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceRoot) return;
 
     // --- PREPARATION: Collect all files already in context ---
-    const alreadyAddedPaths = new Set();
+    const alreadyAddedPaths = new Set<string>();
     for (const snippet of allSnippets) {
       if (snippet.fileName) {
         const relativeFileName = path.isAbsolute(snippet.fileName)
@@ -341,7 +390,7 @@ async function getSuggestionsFromActiveSnippets(allSnippets) {
     }
 
     // --- STEP 1: Frequency Score Calculation (Fast Pass) ---
-    const suggestionFrequency = new Map();
+    const suggestionFrequency = new Map<string, number>();
     const primarySnippets = allSnippets.filter((s) => s.addedBy === "user");
 
     if (primarySnippets.length === 0) {
@@ -357,17 +406,17 @@ async function getSuggestionsFromActiveSnippets(allSnippets) {
         continue;
       const suggestions = await getSuggestionsFromCode(
         snippet.text,
-        snippet.fileName
+        snippet.fileName,
       );
       for (const suggestion of suggestions) {
         if (!alreadyAddedPaths.has(suggestion)) {
-          const count = suggestionFrequency.get(suggestion) || 0;
+          const count = suggestionFrequency.get(suggestion) ?? 0;
           suggestionFrequency.set(suggestion, count + 1);
         }
       }
     }
 
-    const highSignalSuggestions = new Map();
+    const highSignalSuggestions = new Map<string, number>();
     for (const [filePath, frequency] of suggestionFrequency.entries()) {
       // Only keep suggestions imported by 2+ primary files
       if (frequency > 1) {
@@ -380,17 +429,17 @@ async function getSuggestionsFromActiveSnippets(allSnippets) {
         type: "render-smart-suggestions",
         payload: { suggestions: [] },
       });
-      return; // Stop if no high-signal files are found
+      return;
     }
 
     // --- STEP 2: Hub Analysis (Smart Pass on HIGH-SIGNAL files only) ---
     const topCandidatesByFreq = Array.from(highSignalSuggestions.keys())
       .sort(
-        (a, b) => highSignalSuggestions.get(b) - highSignalSuggestions.get(a)
+        (a, b) => highSignalSuggestions.get(b)! - highSignalSuggestions.get(a)!,
       )
       .slice(0, 7);
 
-    const hubScores = new Map();
+    const hubScores = new Map<string, number>();
     for (const filePath of topCandidatesByFreq) {
       const score = await getHubScore(filePath, workspaceRoot);
       hubScores.set(filePath, score);
@@ -400,9 +449,9 @@ async function getSuggestionsFromActiveSnippets(allSnippets) {
     const rankedSuggestions = Array.from(highSignalSuggestions.entries()).map(
       ([filePath, frequency]) => {
         const frequencyScore = frequency * 10;
-        const hubScore = hubScores.get(filePath) || 0;
+        const hubScore = hubScores.get(filePath) ?? 0;
         return { filePath, score: frequencyScore + hubScore };
-      }
+      },
     );
 
     const topSuggestions = rankedSuggestions
@@ -424,7 +473,12 @@ async function getSuggestionsFromActiveSnippets(allSnippets) {
   }
 }
 
-function addSnippetToWebview(options = {}) {
+// Snippet Management
+
+/**
+ * Adds the currently selected code as a snippet to the webview.
+ */
+function addSnippetToWebview(options: AddSnippetOptions = {}): void {
   const { isMain = false, source = "editor" } = options;
 
   vscode.commands.executeCommand("snippetfuse.mainView.focus");
@@ -432,18 +486,18 @@ function addSnippetToWebview(options = {}) {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     vscode.window.showInformationMessage(
-      "No active editor found. Please open a file first."
+      "No active editor found. Please open a file first.",
     );
     return;
   }
 
-  let text;
-  let rangeToUse;
+  let text: string;
+  let rangeToUse: vscode.Range;
 
   if (source === "editor-title-context") {
     rangeToUse = new vscode.Range(
       editor.document.positionAt(0),
-      editor.document.positionAt(editor.document.getText().length)
+      editor.document.positionAt(editor.document.getText().length),
     );
     text = editor.document.getText(rangeToUse);
   } else if (!editor.selection.isEmpty) {
@@ -451,14 +505,14 @@ function addSnippetToWebview(options = {}) {
     text = editor.document.getText(rangeToUse);
   } else {
     vscode.window.showInformationMessage(
-      "Please make a selection to add a snippet."
+      "Please make a selection to add a snippet.",
     );
     return;
   }
 
   const fullPath = editor.document.fileName;
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(
-    editor.document.uri
+    editor.document.uri,
   );
   const relativePath = workspaceFolder
     ? path.relative(workspaceFolder.uri.fsPath, fullPath).replace(/\\/g, "/")
@@ -468,7 +522,7 @@ function addSnippetToWebview(options = {}) {
   const endLine = rangeToUse.end.line + 1;
 
   if (text && webviewView) {
-    const snippet = {
+    const snippet: SnippetData = {
       type: "add-snippet",
       payload: {
         type: "code",
@@ -476,7 +530,7 @@ function addSnippetToWebview(options = {}) {
         text,
         startLine,
         endLine,
-        isMain: isMain,
+        isMain,
         addedBy: "user",
       },
     };
@@ -486,12 +540,20 @@ function addSnippetToWebview(options = {}) {
   }
 }
 
-async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
+/**
+ * Adds full files to the webview context.
+ */
+async function addFullFileToWebview(
+  relativeFilePaths: string[],
+  addedBy = "suggestion",
+): Promise<void> {
   vscode.commands.executeCommand("snippetfuse.mainView.focus");
   if (!webviewView || !relativeFilePaths || relativeFilePaths.length === 0)
     return;
 
-  const rootUri = vscode.workspace.workspaceFolders[0].uri;
+  const rootUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+  if (!rootUri) return;
+
   let addedCount = 0;
 
   for (const relativePath of relativeFilePaths) {
@@ -500,7 +562,7 @@ async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
       if (!resolvedPath) {
         console.warn(`Could not resolve file path: ${relativePath}`);
         vscode.window.showWarningMessage(
-          `Could not find file: ${relativePath}`
+          `Could not find file: ${relativePath}`,
         );
         continue;
       }
@@ -512,7 +574,7 @@ async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
 
       const endLine = text.split(/\r\n|\r|\n/).length;
 
-      const snippet = {
+      const snippet: SnippetData = {
         type: "add-snippet",
         payload: {
           type: "code",
@@ -535,12 +597,12 @@ async function addFullFileToWebview(relativeFilePaths, addedBy = "suggestion") {
 
   if (addedCount > 0) {
     vscode.window.showInformationMessage(
-      `Added ${addedCount} file(s) to Context!`
+      `Added ${addedCount} file(s) to Context!`,
     );
   }
 }
 
-module.exports = {
+export {
   addSnippetToWebview,
   setWebview,
   resetMain,
