@@ -1,7 +1,7 @@
 {
   "name": "snippetfuse",
   "displayName": "SnippetFuse",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "vayospot",
   "description": "A context packaging tool that lets devs quickly scoop up snippets from different files, organize them, then spit them out in a neat format ready to paste into ChatGPT/Claude/Gemini/whatever",
   "author": {
