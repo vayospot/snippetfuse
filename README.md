@@ -20,7 +20,8 @@ It acts like a staging area for gathering and structuring context before sending
 - **Full Customization**: Define your own default prompts (Bug Report, Code Review, etc.) in VS Code settings.
 - **Git Integration**: Automatically generate AI context based on your staged Git changes to draft commit messages easily.
 - **Project Structure**: Include an ASCII-style tree of your codebase (respecting `.gitignore`) to give the AI architectural context.
-- **Flexible Export**: Copy the complete, formatted context to your clipboard, or export it as a Markdown or text file.
+- **Flexible Export**: Copy the complete, formatted context to your clipboard, or export it as a Markdown, text, or PDF file.
+- **TypeScript-Based**: Built with TypeScript for improved type safety, maintainability, and developer experience.
 
 ## How to Use
 

@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.5.0] - 2026-02-21
+
+### Added
+
+- **TypeScript Migration**: Complete migration from JavaScript to TypeScript with strict type checking for improved code quality and maintainability.
+- **Centralized Type Definitions**: New `src/types/index.ts` with comprehensive TypeScript interfaces for webview messages, snippets, exports, Git operations, and commit context.
+- **Centralized Logging**: New `src/utils/logger.ts` with configurable log levels (DEBUG, INFO, WARNING, ERROR) for better debugging and diagnostics.
+- **PDF Export**: Export context as PDF files with proper formatting, including page breaks, text wrapping, and styled output.
+- **Modern ESLint Configuration**: Updated to ESLint flat config with TypeScript support via typescript-eslint, with separate configurations for extension code and webview code.
+
+### Changed
+
+- **Build System**: Replaced `jsconfig.json` with strict `tsconfig.json` for TypeScript compilation.
+- **Webview Communication**: Implemented type-safe message handling using discriminated unions for better reliability.
+- **Extension Lifecycle**: Added proper disposal management for extension resources to prevent memory leaks.
+
+### Fixed
+
+- **Markdown Export**: Fixed export to Markdown not working correctly.
+- **Prompt Template Persistence**: Fixed issue where prompt template selection was not being saved and restored when the panel was closed and reopened.
+
+---
+
 ## [0.4.0] - 2024-05-22
 
 ### Added
